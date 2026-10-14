@@ -13,6 +13,15 @@ def _is_gemini() -> bool:
     return "generativelanguage.googleapis.com" in settings.llm_base_url.lower() or settings.llm_model.lower().startswith("gemini")
 
 
+def _is_ollama() -> bool:
+    return "localhost:11434" in settings.llm_base_url.lower() or "127.0.0.1:11434" in settings.llm_base_url.lower()
+
+
+def _is_configured() -> bool:
+    """Local Ollama does not need a key; remote providers do."""
+    return bool(settings.llm_model and (_is_ollama() or settings.llm_api_key))
+
+
 async def _complete(system: str, user: str, *, json_mode: bool = False) -> str:
     if _is_gemini():
         url = f"{settings.llm_base_url.rstrip('/')}/models/{settings.llm_model}:generateContent"
@@ -30,6 +39,24 @@ async def _complete(system: str, user: str, *, json_mode: bool = False) -> str:
         if result:
             return result
         raise ValueError("The model returned an empty response")
+
+    if _is_ollama():
+        url = f"{settings.llm_base_url.rstrip('/')}/api/chat"
+        payload = {
+            "model": settings.llm_model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "stream": False,
+            "options": {"temperature": 0.85},
+        }
+        if json_mode:
+            payload["format"] = "json"
+        async with httpx.AsyncClient(timeout=90) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+        result = str((response.json().get("message") or {}).get("content") or "").strip()
+        if result:
+            return result
+        raise ValueError("The local model returned an empty response")
 
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
     payload = {
@@ -70,7 +97,7 @@ async def generate_interaction(*, message: str, memories: list[dict], game_state
         "complete_interaction_history": history,
         "player_message": message,
     }
-    if settings.llm_api_key and settings.llm_model:
+    if _is_configured():
         try:
             raw = await _complete(system, json.dumps(context, ensure_ascii=False), json_mode=True)
             # Accommodate providers that ignore JSON response mode and add fences.
@@ -107,7 +134,7 @@ async def interpret_player_input(*, message: str, current_stall: str = "", game_
         "recent_interaction_history": recent_history or [],
         "player_input": message,
     }
-    if settings.llm_api_key and settings.llm_model:
+    if _is_configured():
         try:
             raw = await _complete(system, json.dumps(payload, ensure_ascii=False), json_mode=True)
             raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()

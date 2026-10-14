@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, AlertOctagon, Compass, Play, Sparkles, Store, Users, MessageCircle, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, AlertOctagon, PanelLeftClose, PanelLeftOpen, Compass, LoaderCircle, Play, Sparkles, Store, Users, MessageCircle, Wifi, WifiOff } from 'lucide-react';
 import type { Stall } from './scene/GameScene';
 import DialoguePanel, { type ChatItem } from './components/DialoguePanel';
 import CognitiveInspector from './components/CognitiveInspector';
@@ -22,6 +22,7 @@ export default function App(){
  const [provider,setProvider]=useState('');
  const [arrivalId,setArrivalId]=useState('');
  const [gameStarted,setGameStarted]=useState(false);
+ const [sidebarMinimized,setSidebarMinimized]=useState(false);
  const activeStall=useMemo(()=>stalls.find(stall=>stall.id===activeId)||null,[stalls,activeId]);
  const toChat=(items:Array<{role:string;speaker:string|null;content:string}>,speakLast=false):ChatItem[]=>items.map((x,index)=>({role:x.role as ChatItem['role'],speaker:x.speaker,content:x.content,shouldSpeak:speakLast&&index===items.length-1&&x.role!=='player'}));
 
@@ -48,7 +49,7 @@ export default function App(){
  },[refresh]);
  const start=async()=>{
   setBusy(true);setError('');
-  try{await ensureSession();setActiveId('');setMessages([]);setGameStarted(true)}
+  try{await ensureSession();setActiveId('');setMessages([]);setSidebarMinimized(true);setGameStarted(true)}
   catch(e){setOnline(false);setError(e instanceof Error?e.message:'Could not connect to the plaza')}
   finally{setBusy(false)}
  };
@@ -82,7 +83,7 @@ export default function App(){
  if(!gameStarted)return <main className="landing-screen">
   <header className="landing-topbar"><div className="brand"><div className="brand-mark"><Compass size={20}/></div><div><strong>PROJECT <span>REMNANT</span></strong><small>AFTER HOURS · FOOD PLAZA</small></div></div><div className={`landing-link ${online?'online':''}`}>{online?<Wifi size={14}/>:<WifiOff size={14}/>} {online?'YOUR EVENING IS SAVED':'A CITY FULL OF STORIES'}</div></header>
   {error&&<div className="error-banner"><AlertOctagon size={16}/><span>{error}</span><button onClick={()=>setError('')}>Dismiss</button></div>}
-  <section className="landing-hero"><div className="landing-copy"><div className="eyebrow"><span className="red-dot"/> OLD TOWN · GOLDEN HOUR</div><h1>Come hungry.<br/><em>Leave with stories.</em></h1><p>Tell your character where to go, meet the people behind each counter, and talk about whatever comes to mind. The plaza remembers what matters to you.</p><button className="start-button" onClick={start} disabled={busy||stalls.length===0}><Play size={17} fill="currentColor"/>{busy?'OPENING THE PLAZA':'START YOUR EVENING'}<span>GIVE DIRECTIONS IN CHAT · WASD TO WANDER</span></button></div>
+  <section className="landing-hero"><div className="landing-copy"><div className="eyebrow"><span className="red-dot"/> OLD TOWN · GOLDEN HOUR</div><h1>Come hungry.<br/><em>Leave with stories.</em></h1><p>Tell your character where to go, meet the people behind each counter, and talk about whatever comes to mind. The plaza remembers what matters to you.</p><button className="start-button" onClick={start} disabled={busy||stalls.length===0}>{busy?<LoaderCircle size={17} className="spin"/>:<Play size={17} fill="currentColor"/>}{busy?'OPENING THE PLAZA':stalls.length===0?'LOADING THE PLAZA':'START YOUR EVENING'}<span>GIVE DIRECTIONS IN CHAT · WASD TO WANDER</span></button></div>
    <div className="landing-scene-card"><div className="landing-scene-art"><div className="art-sun"/><div className="art-lantern lantern-a"/><div className="art-lantern lantern-b"/><div className="art-stall-row">{['🥟','🥞','🍲','🫓','🍨'].map((food,i)=><div className={`art-stall art-stall-${i}`} key={food}><span>{food}</span><i/></div>)}</div><div className="art-ground"/><div className="art-caption"><span>OLD TOWN FOOD PLAZA</span><small>18 COUNTERS · ONE LONG EVENING</small></div></div><div className="scene-card-foot"><span><i className="live-pip"/> PEOPLE TO MEET</span><span>TAKE YOUR TIME</span></div></div>
   </section>
   <section className="landing-stats"><article><span className="stat-icon"><Store size={17}/></span><div><b>{stalls.length||18}</b><small>LOCAL FOOD STALLS</small></div></article><article><span className="stat-icon"><Users size={17}/></span><div><b>{stalls.length||18}</b><small>PEOPLE BEHIND THE COUNTERS</small></div></article><article><span className="stat-icon"><MessageCircle size={17}/></span><div><b>{allMessages.filter(m=>m.role==='player').length}</b><small>THINGS YOU'VE SHARED</small></div></article><article><span className="stat-icon"><Sparkles size={17}/></span><div><b>{memories.length}</b><small>DETAILS THEY REMEMBER</small></div></article></section>
@@ -91,12 +92,15 @@ export default function App(){
 
  return <main className="game-fullscreen">
   <div className="game-world"><Suspense fallback={<div className="scene-loading">Setting up the evening market…</div>}><GameScene stalls={stalls} onTalk={selectStall} activeId={activeId} onArrive={arrive}/></Suspense></div>
-  <aside className="game-sidebar"><div className="game-sidebar-top"><button className="back-button" onClick={finish}><ArrowLeft size={15}/> PLAZA HOME</button><div className={`connection ${online?'online':''}`}>{online?<Wifi size={13}/>:<WifiOff size={13}/>} {online?'SAVED VISIT':'LOCAL VISIT'}</div></div>
+  <aside className={`game-sidebar ${sidebarMinimized?'sidebar-minimized':''}`} aria-label="Plaza game controls">
+   {sidebarMinimized&&<div className="sidebar-restore-row"><button className="back-button sidebar-home" onClick={finish}><ArrowLeft size={15}/> PLAZA HOME</button><button className="sidebar-expand" onClick={()=>setSidebarMinimized(false)} aria-label="Expand plaza sidebar" title="Expand sidebar"><PanelLeftOpen size={15}/></button></div>}
+   <div className="sidebar-content"><div className="game-sidebar-top"><button className="back-button" onClick={finish}><ArrowLeft size={15}/> PLAZA HOME</button><div className={`connection ${online?'online':''}`}>{online?<Wifi size={13}/>:<WifiOff size={13}/>} {online?'SAVED VISIT':'LOCAL VISIT'}</div><button className="sidebar-minimize" onClick={()=>setSidebarMinimized(true)} aria-label="Minimize sidebar" title="Minimize sidebar"><PanelLeftClose size={15}/></button></div>
    <div className="sidebar-context"><div className="eyebrow">{activeStall?(arrivalId===activeId?'AT THE COUNTER':'ON YOUR WAY'):'YOUR EVENING'}</div><h1>{activeStall?activeStall.food:'Where should we go?'}</h1><p>{activeStall?`${activeStall.vendor} · ${activeStall.description}`:'Tell me what you’re in the mood for, name a stall, or ask me anything. I’ll get you there.'}</p><div className="sidebar-tags"><span>{activeStall?activeStall.vendor.toUpperCase():'18 STALLS'}</span><span>{provider==='llm'?'GEMINI GAME DIRECTOR':'PERSONAL STORIES'}</span></div>{activeStall&&<div className={`travel-status ${arrivalId===activeId?'arrived':''}`}>{arrivalId===activeId?'YOU MADE IT · SAY HELLO':`WALKING TO ${activeStall.food.toUpperCase()}…`}</div>}</div>
    <DialoguePanel messages={messages} onSend={send} busy={busy} stall={activeStall}/>
    <div className="memory-peek"><span><Sparkles size={14}/> PLAZA MEMORY</span><b>{memories.length?memories[memories.length-1].claim_text:'Share a little about yourself. The vendors will remember.'}</b></div>
    {error&&<div className="sidebar-error"><AlertOctagon size={14}/>{error}</div>}
    <div className="game-controls"><span>WASD <small>WALK</small></span><span>SPACE <small>HOLD TO TALK</small></span><span>{gameState.visited?.length||0} <small>VISITED</small></span></div>
+   </div>
   </aside>
   <div className="game-brand"><b>REMNANT</b><span>OLD TOWN FOOD PLAZA</span></div>
  </main>;

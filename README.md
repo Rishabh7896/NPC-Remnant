@@ -22,7 +22,17 @@ Requirements: Node.js 20+ and Python 3.9+ (Python 3.11+ recommended).
 
 ### 1. Configure the LLM
 
-Copy `backend/.env.example` to `backend/.env`, then set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`. Gemini is configured by default. OpenAI-compatible `/chat/completions` providers are also supported. The key stays on the backend and must never be added to the frontend.
+Copy `backend/.env.example` to `backend/.env`, then set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`. Gemini is configured by default. OpenAI-compatible `/chat/completions` providers and local Ollama are also supported. The key stays on the backend and must never be added to the frontend.
+
+For a local Qwen model you have already pulled with Ollama:
+
+```env
+LLM_API_KEY=
+LLM_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen3:8b
+```
+
+Keep Ollama running with `ollama serve` (or the Ollama desktop app) before starting the backend.
 
 The offline mode lets the plaza load without credentials, but vendor conversations will not be LLM-generated until a working key and model are configured.
 
