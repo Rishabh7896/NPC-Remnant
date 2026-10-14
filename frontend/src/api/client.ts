@@ -11,6 +11,7 @@ export const api = {
   createSession: () => request<Session>('/api/v1/sessions', { method:'POST', body:JSON.stringify({player_name:'Visitor',scenario_id:'evening_food_plaza'}) }),
   session: (id:string) => request<Session>(`/api/v1/sessions/${id}`),
   dialogue: (id:string, message:string, npc_id:string) => request<DialogueResponse>(`/api/v1/sessions/${id}/dialogue`, { method:'POST', body:JSON.stringify({message,location:'evening_food_plaza',npc_id}) }),
+  interact: (id:string, message:string, npc_id:string) => request<DialogueResponse>(`/api/v1/sessions/${id}/interact`, { method:'POST', body:JSON.stringify({message,location:'evening_food_plaza',npc_id}) }),
   memories: (id:string) => request<{memories:Memory[]; conflicts:Conflict[]}>(`/api/v1/sessions/${id}/memories?limit=50`),
   messages: (id:string,npcId='') => request<{messages:Array<{role:'player'|'aria'|'npc';speaker:string|null;content:string}>}>(`/api/v1/sessions/${id}/messages${npcId?`?npc_id=${encodeURIComponent(npcId)}`:''}`),
 };

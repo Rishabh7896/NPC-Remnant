@@ -1,8 +1,10 @@
 """LLM-backed character dialogue with memory extraction and an offline safety net."""
 import json
 import logging
+from typing import Optional
 import httpx
 from app.config import settings
+from app.stalls import STALLS
 
 logger = logging.getLogger(__name__)
 
@@ -83,3 +85,43 @@ async def generate_interaction(*, message: str, memories: list[dict], game_state
             # Keep the walk playable during an outage; the next turn retries the LLM.
             logger.exception("LLM reply failed; serving the offline plaza response")
     return {"reply": _offline_response(memories, game_state), "memories": [], "provider": "offline"}
+
+
+async def interpret_player_input(*, message: str, current_stall: str = "", game_state: Optional[dict] = None, memories: Optional[list[dict]] = None, recent_history: Optional[list[dict]] = None) -> dict:
+    """Use the configured model to understand whether the player wants to move or talk."""
+    system = (
+        "You are the natural-language game director for a cozy, lively 3D Indian food plaza. "
+        "Understand casual commands, typos, indirect requests, preferences, and speech-to-text phrasing. Resolve food, stall, or vendor references against the supplied plaza roster. "
+        "Return JSON only with keys intent, stall_id, reply. intent must be navigate, talk, or plaza_chat. "
+        "Use navigate when the player wants their avatar to go, walk, take me, lead me, show me, find me, or surprise them with a specific or suitable stall. A craving or preference such as wanting something spicy/sweet/comforting can imply finding and walking to a suitable stall; pick the best roster match. Use saved preferences and recent conversation to make recommendations personal. "
+        "Use talk when they want to speak to or ask a named vendor/stall. Use plaza_chat for other conversation, including personal chat and questions that do not imply walking. "
+        "Only choose a stall_id that exactly appears in the roster; use an empty string when no specific stall is clear. "
+        "For navigate, write a short playful in-world acknowledgment that names the destination and adds a little personality, in the player's language. For plaza_chat, leave reply empty. "
+        "If the target is ambiguous, choose plaza_chat and ask one natural clarifying question in reply. Never claim the avatar moved; the game will do that."
+    )
+    payload = {
+        "plaza_stalls": [{"id": s["id"], "food": s["food"], "vendor": s["vendor"]} for s in STALLS],
+        "current_stall_id": current_stall,
+        "current_city_state": game_state or {},
+        "saved_player_memories": memories or [],
+        "recent_interaction_history": recent_history or [],
+        "player_input": message,
+    }
+    if settings.llm_api_key and settings.llm_model:
+        try:
+            raw = await _complete(system, json.dumps(payload, ensure_ascii=False), json_mode=True)
+            raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            parsed = json.loads(raw)
+            intent = parsed.get("intent")
+            stall_id = str(parsed.get("stall_id") or "")
+            valid_ids = {stall["id"] for stall in STALLS}
+            if intent in {"navigate", "talk", "plaza_chat"} and (not stall_id or stall_id in valid_ids):
+                return {
+                    "intent": intent,
+                    "stall_id": stall_id,
+                    "reply": str(parsed.get("reply") or "").strip(),
+                    "provider": "llm",
+                }
+        except Exception:
+            logger.exception("LLM input interpretation failed; treating input as plaza conversation")
+    return {"intent": "plaza_chat", "stall_id": "", "reply": "", "provider": "offline"}

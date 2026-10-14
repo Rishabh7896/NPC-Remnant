@@ -12,6 +12,8 @@
 
 /* Landing screen and full-window plaza game */
 .landing-screen{min-height:100vh;max-width:1440px;margin:0 auto;padding:0 5.2vw;background:radial-gradient(ellipse at 78% 24%,#382923 0%,#17191b 39%,#0b0e12 78%);display:flex;flex-direction:column}
+.travel-status{margin-top:10px;color:#e9b77d;font:8px 'DM Mono';letter-spacing:.7px}.travel-status.arrived{color:#77d6b5}
+.voice-status.recording{color:#ffd3bd;border-color:#a64e41;background:#321f1c}.voice-status.recording kbd{color:#fff0e8;border-color:#9d5144;background:#562b25}
 .landing-topbar{height:78px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #282d31;flex-shrink:0}
 .landing-link{display:flex;align-items:center;gap:8px;color:#86939b;font:9px 'DM Mono';letter-spacing:1px}.landing-link.online{color:#67d5b6}
 .landing-screen>.error-banner{margin-top:14px}

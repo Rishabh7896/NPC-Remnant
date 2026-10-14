@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import MemoryRow, MessageRow, SessionRow
-from app.services.llm_service import generate_interaction
+from app.services.llm_service import generate_interaction, interpret_player_input
 from app.services.memory_service import get_memories, memory_dict
 from app.services.run_service import initial_run
 from app.stalls import STALL_BY_ID
@@ -38,11 +38,9 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
     db.flush()
     memory_rows = get_memories(db, row.id, limit=500)
     memories = [memory_dict(item) for item in reversed(memory_rows)]
-    thread_roles = (f"player:{stall['id']}", f"npc:{stall['id']}") if stall else ("player", "aria")
     messages = db.scalars(
         select(MessageRow).where(
             MessageRow.session_id == row.id,
-            MessageRow.role.in_(thread_roles),
         ).order_by(MessageRow.created_at.asc())
     ).all()
     history = [{"speaker": item.role, "text": item.content} for item in messages]
@@ -94,3 +92,50 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
         "game_state": game,
         "provider": result["provider"],
     }
+
+
+def interact(db: Session, row: SessionRow, message: str, location: str, npc_id: str = ""):
+    """Interpret freeform player input, then navigate or hand it to a character."""
+    recent = db.scalars(
+        select(MessageRow).where(MessageRow.session_id == row.id)
+        .order_by(MessageRow.created_at.desc()).limit(30)
+    ).all()
+    recent_history = [{"speaker": item.role, "text": item.content} for item in reversed(recent)]
+    saved = [memory_dict(item) for item in reversed(get_memories(db, row.id, limit=100))]
+    parsed = asyncio.run(interpret_player_input(
+        message=message, current_stall=npc_id, game_state=json.loads(row.game_state_json),
+        memories=saved, recent_history=recent_history,
+    ))
+    intent = parsed["intent"]
+    target_id = parsed["stall_id"]
+    if intent == "navigate" and target_id in STALL_BY_ID:
+        game = json.loads(row.game_state_json)
+        game["destination"] = target_id
+        game["last_event"] = f"You are heading to {STALL_BY_ID[target_id]['food']}."
+        row.game_state_json = json.dumps(game)
+        reply = parsed["reply"] or f"Off we go to {STALL_BY_ID[target_id]['food']}!"
+        db.add(MessageRow(id=str(uuid4()), session_id=row.id, role="player:world", content=message))
+        db.add(MessageRow(id=str(uuid4()), session_id=row.id, role="world", content=reply))
+        db.commit()
+        return {
+            "intent": "navigate", "reply": reply,
+            "npc": {"id": target_id, "name": "Plaza guide"}, "action": {"type": "navigate", "stall_id": target_id},
+            "provider": parsed["provider"], "game_state": game,
+        }
+
+    if intent == "plaza_chat" and parsed["reply"]:
+        db.add(MessageRow(id=str(uuid4()), session_id=row.id, role="player:world", content=message))
+        db.add(MessageRow(id=str(uuid4()), session_id=row.id, role="world", content=parsed["reply"]))
+        db.commit()
+        return {
+            "intent": "plaza_chat", "reply": parsed["reply"],
+            "npc": {"id": "guide", "name": "Plaza guide"}, "action": {"type": "none"},
+            "provider": parsed["provider"], "game_state": json.loads(row.game_state_json),
+        }
+
+    resolved_id = target_id if target_id in STALL_BY_ID else npc_id
+    result = dialogue(db, row, message, location, resolved_id)
+    result["intent"] = "talk" if resolved_id else "plaza_chat"
+    result["action"] = {"type": "talk", "stall_id": resolved_id} if resolved_id else {"type": "none"}
+    result["intent_provider"] = parsed["provider"]
+    return result

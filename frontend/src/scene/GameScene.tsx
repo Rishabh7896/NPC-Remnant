@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type MutableRefObject } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Html, KeyboardControls, OrbitControls, Stars, useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -28,8 +28,9 @@ function StallBooth({ stall, position, onTalk, selected }: { stall:Stall; positi
   </group>;
 }
 
-function Walker({ target }: {target:THREE.Vector3|null}) {
-  const ref = useRef<THREE.Group>(null);
+function Walker({ target, targetId, onArrive, playerRef }: {target:THREE.Vector3|null;targetId:string;onArrive:(id:string)=>void;playerRef:MutableRefObject<THREE.Group|null>}) {
+  const ref = playerRef;
+  const arrivedTarget = useRef('');
   const [, get] = useKeyboardControls();
   useFrame((_, delta) => {
     if (!ref.current) return;
@@ -44,6 +45,7 @@ function Walker({ target }: {target:THREE.Vector3|null}) {
       const dx=target.x-ref.current.position.x,dz=target.z-ref.current.position.z;
       const distance=Math.hypot(dx,dz);
       if(distance>0.22){ref.current.position.x+=dx/distance*speed;ref.current.position.z+=dz/distance*speed;ref.current.rotation.y=Math.atan2(dx,dz)}
+      else if(arrivedTarget.current!==targetId){arrivedTarget.current=targetId;onArrive(targetId)}
     }
     ref.current.position.x = THREE.MathUtils.clamp(ref.current.position.x, -12, 12);
     ref.current.position.z = THREE.MathUtils.clamp(ref.current.position.z, -9, 10);
@@ -59,9 +61,22 @@ function Walker({ target }: {target:THREE.Vector3|null}) {
   </group>;
 }
 
-function Plaza({ stalls, onTalk, activeId }: { stalls:Stall[]; onTalk:(id:string)=>void; activeId:string }) {
+function Plaza({ stalls, onTalk, activeId, onArrive }: { stalls:Stall[]; onTalk:(id:string)=>void; activeId:string; onArrive:(id:string)=>void }) {
+  const playerRef=useRef<THREE.Group>(null);
+  const controlsRef=useRef<any>(null);
+  const lastPlayerPosition=useRef(new THREE.Vector3(0,0,10));
   const activeIndex=stalls.findIndex(stall=>stall.id===activeId);
   const target=activeIndex<0?null:new THREE.Vector3(-11.25+(activeIndex%6)*4.5,0,-7.5+Math.floor(activeIndex/6)*7+2.6);
+  useFrame(()=>{
+    if(!playerRef.current||!controlsRef.current)return;
+    const delta=playerRef.current.position.clone().sub(lastPlayerPosition.current);
+    if(delta.lengthSq()>0.000001){
+      controlsRef.current.target.add(delta);
+      controlsRef.current.object.position.add(delta);
+      controlsRef.current.update();
+      lastPlayerPosition.current.copy(playerRef.current.position);
+    }
+  });
   return <>
     <color attach="background" args={['#182232']}/><fog attach="fog" args={['#182232',20,55]}/>
     <ambientLight intensity={1.05}/><hemisphereLight args={['#c5d8ff','#8c6544',1.1]}/>
@@ -76,16 +91,16 @@ function Plaza({ stalls, onTalk, activeId }: { stalls:Stall[]; onTalk:(id:string
       const col=index%6; const row=Math.floor(index/6);
       return <StallBooth key={stall.id} stall={stall} position={[-11.25+col*4.5,0,-7.5+row*7]} onTalk={onTalk} selected={stall.id===activeId}/>;
     })}
-    <Walker target={target}/>
-    <OrbitControls target={[0,1,0]} minDistance={11} maxDistance={25} maxPolarAngle={Math.PI/2.08} enablePan/>
+    <Walker target={target} targetId={activeId} onArrive={onArrive} playerRef={playerRef}/>
+    <OrbitControls ref={controlsRef} target={[0,1,0]} minDistance={11} maxDistance={25} maxPolarAngle={Math.PI/2.08} enablePan/>
   </>;
 }
 
-export default function GameScene({stalls,onTalk,activeId}:{stalls:Stall[];onTalk:(id:string)=>void;activeId:string}) {
+export default function GameScene({stalls,onTalk,activeId,onArrive}:{stalls:Stall[];onTalk:(id:string)=>void;activeId:string;onArrive:(id:string)=>void}) {
   return <div className="scene-wrap city-plaza"><KeyboardControls map={[
     {name:'forward',keys:['ArrowUp','KeyW']},{name:'backward',keys:['ArrowDown','KeyS']},
     {name:'left',keys:['ArrowLeft','KeyA']},{name:'right',keys:['ArrowRight','KeyD']},
-  ]}><Canvas shadows camera={{position:[0,13,22],fov:42}}><Plaza stalls={stalls} onTalk={onTalk} activeId={activeId}/></Canvas></KeyboardControls>
-    <div className="scene-hint">WASD / ARROWS TO WANDER · CLICK A STALL TO TALK</div>
+  ]}><Canvas shadows camera={{position:[0,13,22],fov:42}}><Plaza stalls={stalls} onTalk={onTalk} activeId={activeId} onArrive={onArrive}/></Canvas></KeyboardControls>
+    <div className="scene-hint">WASD / ARROWS TO WANDER · CLICK OR TELL ME WHERE TO GO</div>
   </div>;
 }

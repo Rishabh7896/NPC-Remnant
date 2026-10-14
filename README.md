@@ -7,7 +7,8 @@ Every player message and vendor reply is saved to the session. The LLM sees the 
 ## Play
 
 - The landing screen shows the plaza stats. Choose **Start Your Evening** to enter the full-window 3D plaza.
-- Move around with **WASD** or the **arrow keys**. Drag to orbit the view and scroll to zoom. Click a stall to walk up to its shopkeeper.
+- Move around with **WASD** or the **arrow keys**. Drag to orbit the view and scroll to zoom. Click a stall, or tell your character where to go: “Take me to the masala dosa stall,” “Find something spicy,” or “Surprise me.”
+- The Gemini game director interprets each message as a movement request, a vendor conversation, or plaza chat. Your character walks to a recognized destination; once there, continue speaking naturally with that shopkeeper.
 - Each shopkeeper has their own conversation history. Details you share can be remembered across vendors.
 - Type freely, or **hold Space to record** and release to send. The microphone button also works as press and hold.
 - Vendor replies are spoken aloud by default. Use **Voice On/Off** or a speaker icon to control playback.
@@ -60,6 +61,7 @@ Open the Vite URL (usually http://localhost:5173). Use the reset button in the t
 ## Project layout
 
 - `frontend/src/scene/GameScene.tsx`: explorable 3D plaza, vendors, and keyboard movement.
+- `backend/app/services/llm_service.py`: natural-language game direction and in-character conversation generation.
 - `frontend/src/components/DialoguePanel.tsx`: freeform chat, hold-to-talk input, and spoken replies.
 - `backend/app/stalls.py`: plaza and vendor character profiles.
 - `backend/app/services/conversation.py`: persistent transcript and LLM-extracted memories.

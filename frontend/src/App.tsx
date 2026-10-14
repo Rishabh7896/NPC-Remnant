@@ -20,9 +20,10 @@ export default function App(){
  const [error,setError]=useState('');
  const [online,setOnline]=useState(false);
  const [provider,setProvider]=useState('');
+ const [arrivalId,setArrivalId]=useState('');
  const [gameStarted,setGameStarted]=useState(false);
  const activeStall=useMemo(()=>stalls.find(stall=>stall.id===activeId)||null,[stalls,activeId]);
- const toChat=(items:Array<{role:string;speaker:string|null;content:string}>):ChatItem[]=>items.map(x=>({role:x.role as ChatItem['role'],speaker:x.speaker,content:x.content}));
+ const toChat=(items:Array<{role:string;speaker:string|null;content:string}>,speakLast=false):ChatItem[]=>items.map((x,index)=>({role:x.role as ChatItem['role'],speaker:x.speaker,content:x.content,shouldSpeak:speakLast&&index===items.length-1&&x.role!=='player'}));
 
  const refresh=useCallback(async(id:string,npcId='')=>{
   try{
@@ -52,26 +53,36 @@ export default function App(){
   finally{setBusy(false)}
  };
  const selectStall=(id:string)=>{
-  setActiveId(id);
+  setActiveId(id);setArrivalId('');
   if(session)api.messages(session.session_id,id).then(result=>setMessages(toChat(result.messages))).catch(()=>setMessages([]));
  };
  const send=async(message:string)=>{
-  if(!session||!activeStall)return;
+  if(!session)return;
   setBusy(true);setError('');setMessages(old=>[...old,{role:'player',content:message}]);
   try{
-   const result=await api.dialogue(session.session_id,message,activeStall.id);
-   setMessages(old=>[...old,{role:'npc',speaker:result.npc.name,content:result.reply}]);
-   setProvider(result.provider);await refresh(session.session_id,activeStall.id);await refresh(session.session_id);
-  }catch(e){setError(e instanceof Error?e.message:'Conversation failed');setMessages(old=>[...old,{role:'npc',speaker:activeStall.vendor,content:'I’m sorry, the plaza connection dropped. Your conversation is still here—try again in a moment.'}])}
+   const result=await api.interact(session.session_id,message,activeId);
+   setProvider(result.provider);
+   if(result.action?.type==='navigate'&&result.action.stall_id){
+    const target=result.action.stall_id;setActiveId(target);setArrivalId('');
+    const thread=await api.messages(session.session_id,target);setMessages(toChat(thread.messages,true));
+   }else{
+    const target=result.action?.stall_id||activeId;
+    if(target&&target!==activeId){setActiveId(target);setArrivalId('')}
+    const thread=await api.messages(session.session_id,target);
+    setMessages(toChat(thread.messages,true));
+   }
+   await refresh(session.session_id);
+  }catch(e){setError(e instanceof Error?e.message:'Conversation failed');setMessages(old=>[...old,{role:'aria',speaker:'Plaza guide',content:'I lost the plaza signal for a moment. Try that again?'}])}
   finally{setBusy(false)}
  };
+ const arrive=(id:string)=>setArrivalId(id);
  const gameState=session?.game_state||{game:'after_hours_city',place:'Old Town Square',visited:[],status:'roaming',last_event:'The evening lights are coming on.'};
  const finish=()=>{setGameStarted(false);setActiveId('');if(session)refresh(session.session_id)};
 
  if(!gameStarted)return <main className="landing-screen">
   <header className="landing-topbar"><div className="brand"><div className="brand-mark"><Compass size={20}/></div><div><strong>PROJECT <span>REMNANT</span></strong><small>AFTER HOURS · FOOD PLAZA</small></div></div><div className={`landing-link ${online?'online':''}`}>{online?<Wifi size={14}/>:<WifiOff size={14}/>} {online?'YOUR EVENING IS SAVED':'A CITY FULL OF STORIES'}</div></header>
   {error&&<div className="error-banner"><AlertOctagon size={16}/><span>{error}</span><button onClick={()=>setError('')}>Dismiss</button></div>}
-  <section className="landing-hero"><div className="landing-copy"><div className="eyebrow"><span className="red-dot"/> OLD TOWN · GOLDEN HOUR</div><h1>Come hungry.<br/><em>Leave with stories.</em></h1><p>Take a walk through a neighborhood food plaza. Meet the people behind the counters, talk about your day, and see what they remember next time.</p><button className="start-button" onClick={start} disabled={busy||stalls.length===0}><Play size={17} fill="currentColor"/>{busy?'OPENING THE PLAZA':'START YOUR EVENING'}<span>WASD TO WALK · SPACE TO TALK</span></button></div>
+  <section className="landing-hero"><div className="landing-copy"><div className="eyebrow"><span className="red-dot"/> OLD TOWN · GOLDEN HOUR</div><h1>Come hungry.<br/><em>Leave with stories.</em></h1><p>Tell your character where to go, meet the people behind each counter, and talk about whatever comes to mind. The plaza remembers what matters to you.</p><button className="start-button" onClick={start} disabled={busy||stalls.length===0}><Play size={17} fill="currentColor"/>{busy?'OPENING THE PLAZA':'START YOUR EVENING'}<span>GIVE DIRECTIONS IN CHAT · WASD TO WANDER</span></button></div>
    <div className="landing-scene-card"><div className="landing-scene-art"><div className="art-sun"/><div className="art-lantern lantern-a"/><div className="art-lantern lantern-b"/><div className="art-stall-row">{['🥟','🥞','🍲','🫓','🍨'].map((food,i)=><div className={`art-stall art-stall-${i}`} key={food}><span>{food}</span><i/></div>)}</div><div className="art-ground"/><div className="art-caption"><span>OLD TOWN FOOD PLAZA</span><small>18 COUNTERS · ONE LONG EVENING</small></div></div><div className="scene-card-foot"><span><i className="live-pip"/> PEOPLE TO MEET</span><span>TAKE YOUR TIME</span></div></div>
   </section>
   <section className="landing-stats"><article><span className="stat-icon"><Store size={17}/></span><div><b>{stalls.length||18}</b><small>LOCAL FOOD STALLS</small></div></article><article><span className="stat-icon"><Users size={17}/></span><div><b>{stalls.length||18}</b><small>PEOPLE BEHIND THE COUNTERS</small></div></article><article><span className="stat-icon"><MessageCircle size={17}/></span><div><b>{allMessages.filter(m=>m.role==='player').length}</b><small>THINGS YOU'VE SHARED</small></div></article><article><span className="stat-icon"><Sparkles size={17}/></span><div><b>{memories.length}</b><small>DETAILS THEY REMEMBER</small></div></article></section>
@@ -79,9 +90,9 @@ export default function App(){
  </main>;
 
  return <main className="game-fullscreen">
-  <div className="game-world"><Suspense fallback={<div className="scene-loading">Setting up the evening market…</div>}><GameScene stalls={stalls} onTalk={selectStall} activeId={activeId}/></Suspense></div>
+  <div className="game-world"><Suspense fallback={<div className="scene-loading">Setting up the evening market…</div>}><GameScene stalls={stalls} onTalk={selectStall} activeId={activeId} onArrive={arrive}/></Suspense></div>
   <aside className="game-sidebar"><div className="game-sidebar-top"><button className="back-button" onClick={finish}><ArrowLeft size={15}/> PLAZA HOME</button><div className={`connection ${online?'online':''}`}>{online?<Wifi size={13}/>:<WifiOff size={13}/>} {online?'SAVED VISIT':'LOCAL VISIT'}</div></div>
-   <div className="sidebar-context"><div className="eyebrow">{activeStall?'AT THE COUNTER':'YOUR EVENING'}</div><h1>{activeStall?activeStall.food:'Find your favorite spot'}</h1><p>{activeStall?`${activeStall.vendor} · ${activeStall.description}`:'Walk around the plaza and tap a stall when someone catches your eye.'}</p><div className="sidebar-tags"><span>{activeStall?activeStall.vendor.toUpperCase():'18 STALLS'}</span><span>{provider==='llm'?'GEMINI CONVERSATION':'PERSONAL STORIES'}</span></div></div>
+   <div className="sidebar-context"><div className="eyebrow">{activeStall?(arrivalId===activeId?'AT THE COUNTER':'ON YOUR WAY'):'YOUR EVENING'}</div><h1>{activeStall?activeStall.food:'Where should we go?'}</h1><p>{activeStall?`${activeStall.vendor} · ${activeStall.description}`:'Tell me what you’re in the mood for, name a stall, or ask me anything. I’ll get you there.'}</p><div className="sidebar-tags"><span>{activeStall?activeStall.vendor.toUpperCase():'18 STALLS'}</span><span>{provider==='llm'?'GEMINI GAME DIRECTOR':'PERSONAL STORIES'}</span></div>{activeStall&&<div className={`travel-status ${arrivalId===activeId?'arrived':''}`}>{arrivalId===activeId?'YOU MADE IT · SAY HELLO':`WALKING TO ${activeStall.food.toUpperCase()}…`}</div>}</div>
    <DialoguePanel messages={messages} onSend={send} busy={busy} stall={activeStall}/>
    <div className="memory-peek"><span><Sparkles size={14}/> PLAZA MEMORY</span><b>{memories.length?memories[memories.length-1].claim_text:'Share a little about yourself. The vendors will remember.'}</b></div>
    {error&&<div className="sidebar-error"><AlertOctagon size={14}/>{error}</div>}

@@ -37,11 +37,12 @@ def get_messages(session_id:str,npc_id:str=Query(default=""),db:Session=Depends(
     result=[]
     selected_npc_id=npc_id
     for m in items:
-        if selected_npc_id and m.role not in {f"player:{selected_npc_id}",f"npc:{selected_npc_id}"}:
+        if selected_npc_id and m.role not in {f"player:{selected_npc_id}",f"npc:{selected_npc_id}","player:world","world"}:
             continue
-        if m.role in {"player","aria"} or m.role.startswith("player:") or m.role.startswith("npc:"):
+        if m.role in {"player","aria","world"} or m.role.startswith("player:") or m.role.startswith("npc:"):
             speaker_id=m.role.split(":",1)[1] if m.role.startswith("npc:") else None
             is_player=m.role=="player" or m.role.startswith("player:")
             speaker=STALL_BY_ID[speaker_id]["vendor"] if speaker_id in STALL_BY_ID else None
-            result.append({"role":"player" if is_player else "npc" if speaker_id else m.role,"speaker":speaker,"content":m.content,"created_at":m.created_at.isoformat() if m.created_at else None})
+            role="player" if is_player else "npc" if speaker_id else "aria" if m.role in {"aria","world"} else m.role
+            result.append({"role":role,"speaker":speaker or ("Plaza guide" if m.role=="world" else None),"content":m.content,"created_at":m.created_at.isoformat() if m.created_at else None})
     return {"messages":result}
