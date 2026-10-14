@@ -1,66 +1,71 @@
-# PROJECT REMNANT
+# PROJECT REMNANT — After Hours
 
-A hackathon-ready starter for a 3D Mars survival demo with ARIA, a source-aware AI companion.
+Explore a lively 3D Indian food plaza at dusk. Wander between 18 family-run stalls—from pani puri, chaat, dosa, and idli to chai, jalebi, kulfi, and filter coffee—and talk with the people behind them.
 
-## Features
-- 3D scene built with React Three Fiber (procedural station props; no external assets required).
-- Dialogue panel with a hosted LLM adapter and deterministic fallback.
-- Persistent SQLite sessions, messages, memories, conflicts, evidence, and mission state.
-- Source-aware belief revision and server-side action validation.
-- Cognitive inspector showing memory provenance and unresolved conflicts.
-- Scenario reset and API tests.
+Every player message and vendor reply is saved to the session. The LLM sees the conversation across all stalls, uses the player’s saved memories for context, writes each vendor’s reply in character, and extracts durable preferences the player shared. A conversation with the chai vendor can shape a later conversation at the dosa stall.
 
-## Requirements
-- Node.js 20+ recommended
-- Python 3.11+
-- An LLM provider API key (optional; demo works with deterministic fallback)
+## Play
+
+- The landing screen shows the plaza stats. Choose **Start Your Evening** to enter the full-window 3D plaza.
+- Move around with **WASD** or the **arrow keys**. Drag to orbit the view and scroll to zoom. Click a stall to walk up to its shopkeeper.
+- Each shopkeeper has their own conversation history. Details you share can be remembered across vendors.
+- Type freely, or **hold Space to record** and release to send. The microphone button also works as press and hold.
+- Vendor replies are spoken aloud by default. Use **Voice On/Off** or a speaker icon to control playback.
+- The memory panel shows details vendors may use in later conversations.
+
+Voice recognition uses the browser’s speech recognition support (Chrome and Edge work best); text-to-speech uses browser speech synthesis. Microphone access is requested by the browser on first use. Typed chat works in every browser.
 
 ## Run locally
 
-### 1. Backend
+Requirements: Node.js 20+ and Python 3.9+ (Python 3.11+ recommended).
+
+### 1. Configure the LLM
+
+Copy `backend/.env.example` to `backend/.env`, then set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`. Gemini is configured by default. OpenAI-compatible `/chat/completions` providers are also supported. The key stays on the backend and must never be added to the frontend.
+
+The offline mode lets the plaza load without credentials, but vendor conversations will not be LLM-generated until a working key and model are configured.
+
+### 2. Start the backend
+
 ```bash
 cd backend
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-# Windows PowerShell:
-# .venv\Scripts\Activate.ps1
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Backend docs: http://localhost:8000/docs
+Health check: http://localhost:8000/health. API docs: http://localhost:8000/docs.
 
-### 2. Frontend
+### 3. Start the frontend
+
 In a second terminal:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open the Vite URL shown in the terminal.
 
-### 3. Optional LLM
-Copy `backend/.env.example` to `backend/.env` and set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`.
-The adapter uses an OpenAI-compatible chat-completions endpoint. Without credentials, ARIA uses a deterministic response so the mission remains playable.
+Open the Vite URL (usually http://localhost:5173). Use the reset button in the top bar to start a fresh plaza visit.
 
-## Demo flow
-1. Start/reset the session.
-2. Tell ARIA: `The engineering wing is safe. I checked it.`
-3. Inspect the sensor console. It reports a hazard and ARIA records the conflict.
-4. Inspect the repair panel and repair the sensor.
-5. The scenario provides an authoritative post-repair normal reading.
-6. Ask ARIA what it believes now. Inspect the cognitive inspector and try entering the wing.
+## Demo conversation
 
-## Architecture
-- `frontend/`: 3D scene, dialogue, mission and memory inspector.
-- `backend/app/api/`: HTTP contracts.
-- `backend/app/services/`: dialogue, memory, mission, and LLM logic.
-- `backend/app/data/schema.sql`: schema reference.
-- `backend/tests/`: focused API and memory tests.
+1. Visit Rani’s pani puri stall and ask what makes her pani puri special.
+2. Tell her a little about your spice tolerance, favorite snack, or who you’re exploring with.
+3. Visit another stall and ask a question that builds on what you shared earlier.
+4. Return to the landing screen and check the saved visit stats, then start again to continue.
+5. Try voice input by holding Space, speaking naturally, and releasing. Listen to the vendor’s spoken reply.
 
-## Important scope notes
-- Confidence is a heuristic score, not a calibrated probability.
-- The scenario uses fixed evidence IDs and deterministic rules for reproducibility.
-- The LLM can propose dialogue/intents; backend rules alone change world state.
-- This is a hackathon starter, not production-hardened software.
+## Project layout
+
+- `frontend/src/scene/GameScene.tsx`: explorable 3D plaza, vendors, and keyboard movement.
+- `frontend/src/components/DialoguePanel.tsx`: freeform chat, hold-to-talk input, and spoken replies.
+- `backend/app/stalls.py`: plaza and vendor character profiles.
+- `backend/app/services/conversation.py`: persistent transcript and LLM-extracted memories.
+- `backend/app/services/llm_service.py`: provider calls and in-character LLM responses.
+- `backend/app/services/memory_service.py`: session memory storage and retrieval.
+
+## Hackathon scope
+
+The market is procedural and uses simple 3D geometry, so it runs without downloaded art assets. Vendor biographies and the menu are authored world data; conversations and memory extraction come from the configured LLM. The transcript and memories are stored in the local SQLite database for each session. This is a prototype rather than a production service.

@@ -1,24 +1,28 @@
 import json
 from uuid import uuid4
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import SessionRow, MessageRow, EvidenceRow
+from app.models import SessionRow, MessageRow
 from sqlalchemy import select
 from app.schemas import CreateSessionRequest
-from app.services.mission_service import INITIAL_GAME, INITIAL_MISSION
-from app.services.memory_service import evidence_catalog
+from app.services.run_service import initial_run
+from app.stalls import STALLS, STALL_BY_ID
 
 router=APIRouter(prefix="/api/v1/sessions",tags=["sessions"])
 def session_out(row):
     return {"session_id":row.id,"npc_id":"aria","mission":json.loads(row.mission_state_json),"game_state":json.loads(row.game_state_json)}
 @router.post("")
 def create_session(body:CreateSessionRequest,db:Session=Depends(get_db)):
-    sid=str(uuid4()); game=dict(INITIAL_GAME); mission=dict(INITIAL_MISSION)
+    sid=str(uuid4()); game=initial_run(); mission={"id":"evening_food_plaza","status":"active","step":"explore"}
     row=SessionRow(id=sid,player_name=body.player_name,scenario_id=body.scenario_id,game_state_json=json.dumps(game),mission_state_json=json.dumps(mission),relationship_trust=.5)
-    db.add(row); evidence_catalog(db,body.scenario_id)
-    db.add(MessageRow(id=str(uuid4()),session_id=sid,role="aria",content="Commander, life support is stable, but the engineering-wing sensor needs investigation. Tell me what you know. I will distinguish crew reports from verified station evidence."))
+    db.add(row)
+    db.add(MessageRow(id=str(uuid4()),session_id=sid,role="aria",content="Welcome to the plaza. Take your time, wander around, and talk to anyone whose stall catches your eye."))
     db.commit(); return session_out(row)
+
+@router.get("/stalls")
+def get_stalls():
+    return {"stalls": STALLS}
 @router.get("/{session_id}")
 def get_session(session_id:str,db:Session=Depends(get_db)):
     row=db.get(SessionRow,session_id)
@@ -26,8 +30,18 @@ def get_session(session_id:str,db:Session=Depends(get_db)):
     return session_out(row)
 
 @router.get("/{session_id}/messages")
-def get_messages(session_id:str,db:Session=Depends(get_db)):
+def get_messages(session_id:str,npc_id:str=Query(default=""),db:Session=Depends(get_db)):
     row=db.get(SessionRow,session_id)
     if not row: raise HTTPException(404,"Session not found")
     items=db.scalars(select(MessageRow).where(MessageRow.session_id==session_id).order_by(MessageRow.created_at.asc())).all()
-    return {"messages":[{"role":m.role,"content":m.content,"created_at":m.created_at.isoformat() if m.created_at else None} for m in items if m.role in {"player","aria"}]}
+    result=[]
+    selected_npc_id=npc_id
+    for m in items:
+        if selected_npc_id and m.role not in {f"player:{selected_npc_id}",f"npc:{selected_npc_id}"}:
+            continue
+        if m.role in {"player","aria"} or m.role.startswith("player:") or m.role.startswith("npc:"):
+            speaker_id=m.role.split(":",1)[1] if m.role.startswith("npc:") else None
+            is_player=m.role=="player" or m.role.startswith("player:")
+            speaker=STALL_BY_ID[speaker_id]["vendor"] if speaker_id in STALL_BY_ID else None
+            result.append({"role":"player" if is_player else "npc" if speaker_id else m.role,"speaker":speaker,"content":m.content,"created_at":m.created_at.isoformat() if m.created_at else None})
+    return {"messages":result}

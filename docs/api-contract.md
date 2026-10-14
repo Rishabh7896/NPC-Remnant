@@ -1,12 +1,13 @@
 # API contract
+
 Base path: `/api/v1`
 
-- `GET /health` -> `{ "status": "ok" }`
-- `POST /sessions` body `{ "player_name": "Commander", "scenario_id": "mars_station_01" }`
-- `GET /sessions/{id}` -> session, mission, and game state
-- `POST /sessions/{id}/dialogue` body `{ "message": "...", "location": "control_room" }`
-- `GET /sessions/{id}/memories?limit=50` -> memories and conflicts
-- `POST /sessions/{id}/evidence` body `{ "evidence_id": "sensor_engineering_01" }`
-- `POST /sessions/{id}/actions` body `{ "action_type": "repair_sensor" }`
+- `GET /health` -> service status
+- `GET /sessions/stalls` -> authored plaza menu and vendor context
+- `POST /sessions` -> creates a persistent plaza session
+- `GET /sessions/{id}` -> session, mission, and world state
+- `GET /sessions/{id}/messages` -> complete saved conversation across vendors
+- `POST /sessions/{id}/dialogue` body `{ "message": "...", "location": "evening_food_plaza", "npc_id": "pani-puri" }`
+- `GET /sessions/{id}/memories?limit=50` -> LLM-extracted personal memories and conflicts
 
-Game state is authoritative on the backend. The browser must render returned state and must not locally authorize mission actions.
+For each dialogue turn, the backend loads the session transcript and saved memories, passes them with the selected vendor profile to the configured LLM, stores the player and vendor messages, and persists newly extracted memories. The provider is called from the backend; its key is configured in `backend/.env`.

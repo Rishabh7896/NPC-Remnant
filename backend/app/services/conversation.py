@@ -1,30 +1,96 @@
-import json, re
+import asyncio
+import hashlib
+import json
 from uuid import uuid4
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
-from app.models import MessageRow, SessionRow
-from app.services.memory_service import add_claim, get_memories, memory_dict
-from app.services.llm_service import generate_reply
+from sqlalchemy.orm import Session
 
-SAFE_CLAIM_PATTERNS=[
- (re.compile(r"(?:engineering wing|engineering-wing).{0,35}(?:safe|clear)|(?:safe|clear).{0,35}(?:engineering wing|engineering-wing)",re.I),"engineering_wing_safe","engineering_wing","is_safe","true","Engineering wing is safe."),
- (re.compile(r"(?:engineering wing|engineering-wing).{0,35}(?:dangerous|unsafe|hazard)",re.I),"engineering_wing_unsafe","engineering_wing","is_safe","false","Engineering wing may be unsafe."),
-]
+from app.models import MemoryRow, MessageRow, SessionRow
+from app.services.llm_service import generate_interaction
+from app.services.memory_service import get_memories, memory_dict
+from app.services.run_service import initial_run
+from app.stalls import STALL_BY_ID
 
-def dialogue(db:Session,row:SessionRow,message:str,location:str):
-    game=json.loads(row.game_state_json)
-    db.add(MessageRow(id=str(uuid4()),session_id=row.id,role="player",content=message))
-    # Deterministic extraction for the core demo. Player-origin claims can never be authoritative.
-    for pattern,key,subject,predicate,value,label in SAFE_CLAIM_PATTERNS:
-        if pattern.search(message):
-            add_claim(db,row.id,claim_key=key,claim_text=label,subject=subject,predicate=predicate,value=value,source_type="player_report",source_id=None,confidence=.55,authoritative=False)
-            break
-    mems=[memory_dict(m) for m in reversed(get_memories(db,row.id,limit=20))]
-    recent=db.scalars(select(MessageRow).where(MessageRow.session_id==row.id).order_by(MessageRow.created_at.desc()).limit(12)).all()
-    recent_data=[{"role":m.role,"content":m.content} for m in reversed(recent)]
-    reply=__import__('asyncio').run(generate_reply(message,mems,game,recent_data))
-    db.add(MessageRow(id=str(uuid4()),session_id=row.id,role="aria",content=reply))
+
+def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: str):
+    game = json.loads(row.game_state_json)
+    if game.get("game") != "after_hours_city":
+        game = initial_run()
+        row.game_state_json = json.dumps(game)
+
+    stall = STALL_BY_ID.get(npc_id)
+    if stall:
+        character = {**stall, "place": stall["food"]}
+        speaker_role = f"npc:{stall['id']}"
+        player_role = f"player:{stall['id']}"
+        speaker_name = stall["vendor"]
+        game["place"] = stall["food"]
+        if stall["id"] not in game["visited"]:
+            game["visited"].append(stall["id"])
+    else:
+        character = {"vendor": "ARIA", "food": "plaza guide", "personality": "helpful local guide", "place": location}
+        speaker_role = "aria"
+        player_role = "player"
+        speaker_name = "ARIA"
+
+    db.add(MessageRow(id=str(uuid4()), session_id=row.id, role=player_role, content=message))
+    db.flush()
+    memory_rows = get_memories(db, row.id, limit=500)
+    memories = [memory_dict(item) for item in reversed(memory_rows)]
+    thread_roles = (f"player:{stall['id']}", f"npc:{stall['id']}") if stall else ("player", "aria")
+    messages = db.scalars(
+        select(MessageRow).where(
+            MessageRow.session_id == row.id,
+            MessageRow.role.in_(thread_roles),
+        ).order_by(MessageRow.created_at.asc())
+    ).all()
+    history = [{"speaker": item.role, "text": item.content} for item in messages]
+
+    result = asyncio.run(generate_interaction(
+        message=message,
+        memories=memories,
+        game_state=game,
+        history=history,
+        character=character,
+    ))
+
+    new_memories = []
+    added_keys = set()
+    for extracted in result["memories"]:
+        claim_text = str(extracted["claim_text"]).strip()[:240]
+        value = str(extracted["value"]).strip()[:160]
+        if not claim_text or not value:
+            continue
+        key = hashlib.sha256(value.casefold().encode("utf-8")).hexdigest()[:16]
+        claim_key = f"personal_{key}"
+        if claim_key in added_keys:
+            continue
+        existing = db.scalars(
+            select(MemoryRow).where(MemoryRow.session_id == row.id, MemoryRow.claim_key == claim_key)
+        ).first()
+        if existing:
+            continue
+        record = MemoryRow(
+            id=str(uuid4()), session_id=row.id, claim_key=claim_key,
+            claim_text=claim_text, subject="player", predicate=f"personal_context_{key}",
+            value=value, source_type="player_report", confidence=0.82, status="remembered",
+        )
+        db.add(record)
+        new_memories.append(record)
+        added_keys.add(claim_key)
+
+    game["last_event"] = f"You spoke with {speaker_name} at {stall['food'] if stall else 'the plaza'}."
+    row.game_state_json = json.dumps(game)
+    reply = result["reply"]
+    db.add(MessageRow(id=str(uuid4()), session_id=row.id, role=speaker_role, content=reply))
     db.commit()
-    relevant=[m for m in get_memories(db,row.id,limit=20) if m.subject=="engineering_wing"]
-    proposal={"type":"inspect_sensor","reason":"Verify the crew report against station evidence."} if game.get("sensor")=="uninspected" else None
-    return {"reply":reply,"memory_updates":[memory_dict(m) for m in relevant[:3]],"beliefs":[{"subject":m.subject,"predicate":m.predicate,"value":m.value,"confidence":m.confidence,"status":m.status} for m in relevant],"action_proposal":proposal,"action_result":None}
+
+    return {
+        "reply": reply,
+        "npc": {"id": npc_id or "aria", "name": speaker_name},
+        "memory_updates": [memory_dict(item) for item in new_memories],
+        "memories": [memory_dict(item) for item in get_memories(db, row.id, limit=500)],
+        "game_state": game,
+        "provider": result["provider"],
+    }

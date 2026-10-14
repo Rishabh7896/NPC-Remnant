@@ -1,4 +1,6 @@
+from __future__ import annotations
 from datetime import datetime, timezone
+from typing import Optional
 from sqlalchemy import String, Text, Float, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
@@ -8,8 +10,8 @@ def now_utc(): return datetime.now(timezone.utc)
 class SessionRow(Base):
     __tablename__ = "sessions"
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    player_name: Mapped[str] = mapped_column(String, default="Commander")
-    scenario_id: Mapped[str] = mapped_column(String, default="mars_station_01")
+    player_name: Mapped[str] = mapped_column(String, default="Visitor")
+    scenario_id: Mapped[str] = mapped_column(String, default="evening_food_plaza")
     game_state_json: Mapped[str] = mapped_column(Text)
     mission_state_json: Mapped[str] = mapped_column(Text)
     relationship_trust: Mapped[float] = mapped_column(Float, default=0.5)
@@ -33,7 +35,7 @@ class MemoryRow(Base):
     predicate: Mapped[str] = mapped_column(String, index=True)
     value: Mapped[str] = mapped_column(String)
     source_type: Mapped[str] = mapped_column(String)
-    source_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
     status: Mapped[str] = mapped_column(String, default="unverified")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
@@ -45,15 +47,5 @@ class ConflictRow(Base):
     memory_a_id: Mapped[str] = mapped_column(ForeignKey("memories.id"))
     memory_b_id: Mapped[str] = mapped_column(ForeignKey("memories.id"))
     status: Mapped[str] = mapped_column(String, default="unresolved")
-    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
-
-class EvidenceRow(Base):
-    __tablename__ = "evidence"
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    scenario_id: Mapped[str] = mapped_column(String, index=True)
-    subject: Mapped[str] = mapped_column(String)
-    predicate: Mapped[str] = mapped_column(String)
-    value: Mapped[str] = mapped_column(String)
-    source_type: Mapped[str] = mapped_column(String)
-    trust_level: Mapped[str] = mapped_column(String)

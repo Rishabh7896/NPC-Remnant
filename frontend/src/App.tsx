@@ -1,26 +1,92 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Activity, AlertOctagon, Compass, Cpu, RotateCcw, Wifi, WifiOff } from 'lucide-react';
-import GameScene from './scene/GameScene';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, AlertOctagon, Compass, Play, Sparkles, Store, Users, MessageCircle, Wifi, WifiOff } from 'lucide-react';
+import type { Stall } from './scene/GameScene';
 import DialoguePanel, { type ChatItem } from './components/DialoguePanel';
 import CognitiveInspector from './components/CognitiveInspector';
-import MissionPanel from './components/MissionPanel';
 import { api } from './api/client';
 import type { Conflict, Memory, Session } from './types';
 
-const intro:ChatItem={role:'aria',content:'Commander, life support is stable, but the engineering-wing sensor needs investigation. Tell me what you know. I will distinguish crew reports from verified station evidence.'};
+const GameScene=lazy(()=>import('./scene/GameScene'));
+
 export default function App(){
- const [session,setSession]=useState<Session|null>(null);const [messages,setMessages]=useState<ChatItem[]>([intro]);const [memories,setMemories]=useState<Memory[]>([]);const [conflicts,setConflicts]=useState<Conflict[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [online,setOnline]=useState(false);const [lastAction,setLastAction]=useState('Awaiting first report');
- const refresh=useCallback(async(id:string)=>{try{const [s,m,ch]=await Promise.all([api.session(id),api.memories(id),api.messages(id)]);setSession(s);setMemories(m.memories);setConflicts(m.conflicts);if(ch.messages.length)setMessages(ch.messages.filter(x=>x.role==='aria'||x.role==='player').map(x=>({role:x.role as 'aria'|'player',content:x.content})))}catch(e){setError(e instanceof Error?e.message:'Could not refresh station state')}} ,[]);
- const start=useCallback(async()=>{setBusy(true);setError('');try{const s=await api.createSession();setSession(s);setMessages([intro]);setMemories([]);setConflicts([]);setLastAction('New mission initialized');localStorage.setItem('remnant-session',s.session_id);setOnline(true)}catch(e){setOnline(false);setError(e instanceof Error?e.message:'Backend unavailable')}finally{setBusy(false)}},[]);
- useEffect(()=>{const id=localStorage.getItem('remnant-session');if(id){refresh(id).then(()=>setOnline(true)).catch(()=>setOnline(false))}else{start()}},[refresh,start]);
- const send=async(message:string)=>{if(!session)return;setBusy(true);setError('');setMessages(old=>[...old,{role:'player',content:message}]);try{const result=await api.dialogue(session.session_id,message);setMessages(old=>[...old,{role:'aria',content:result.reply}]);setLastAction(result.action_result?result.action_result.reason:'Memory updated');await refresh(session.session_id)}catch(e){setError(e instanceof Error?e.message:'Dialogue request failed');setMessages(old=>[...old,{role:'aria',content:'Comms are degraded. I will not change station state without verified data. Please retry when the link is restored.'}])}finally{setBusy(false)}};
- const interact=async(id:string)=>{if(!session)return;if(id==='sensor_engineering_01'){await runEvidence(id);return}if(id==='repair_sensor_panel'){await runAction('repair_sensor');return}await runAction(id)};
- const runEvidence=async(id:string)=>{if(!session)return;setBusy(true);setError('');try{const result=await api.evidence(session.session_id,id);setLastAction(result.message||'Sensor evidence recorded');setMessages(old=>[...old,{role:'aria',content:result.aria_message||'The sensor reports a hazard. This conflicts with the earlier crew report. I recommend repairing or verifying the sensor before entry.'}]);await refresh(session.session_id)}catch(e){setError(e instanceof Error?e.message:'Evidence request failed')}finally{setBusy(false)}};
- const runAction=async(action:string)=>{if(!session)return;setBusy(true);setError('');try{const result=await api.action(session.session_id,action);setLastAction(result.reason||'Action processed');setMessages(old=>[...old,{role:'aria',content:result.accepted?`Action accepted: ${result.reason}`:`Action blocked: ${result.reason}`}]);await refresh(session.session_id)}catch(e){setError(e instanceof Error?e.message:'Action failed')}finally{setBusy(false)}};
- return <main className="app-shell"><header className="topbar"><div className="brand"><div className="brand-mark"><Compass size={20}/></div><div><strong>PROJECT <span>REMNANT</span></strong><small>COGNITIVE NPC FIELD TEST · MARS 07</small></div></div><div className="top-status"><span className={online?'connection online':'connection'}>{online?<Wifi size={14}/>:<WifiOff size={14}/>} {online?'SYSTEM LINK':'OFFLINE'}</span><span className="divider-v"/><span className="session-label"><Activity size={14}/> {session?session.session_id.slice(0,8).toUpperCase():'CONNECTING'}</span><button className="icon-button" title="Reset mission" onClick={start} disabled={busy}><RotateCcw size={16}/></button></div></header>
- <section className="hero"><div><div className="eyebrow"><span className="red-dot"/> LIVE SIMULATION · ARES RESEARCH STATION</div><h1>Trust is earned.<br/><em>Beliefs are revised.</em></h1><p>ARIA is your crew companion. Every memory has a source. Every action has a reason.</p></div><div className="hero-metric"><span>AI COMPANION</span><b><span className="pulse-dot"/> ARIA ONLINE</b><small><Cpu size={13}/> SOURCE-AWARE MEMORY SYSTEM</small></div></section>
- {error&&<div className="error-banner"><AlertOctagon size={16}/><span>{error}</span><button onClick={()=>setError('')}>Dismiss</button></div>}
- <section className="workspace"><div className="left-column"><div className="scene-card"><div className="scene-topline"><span>01 / HABITAT CONTROL ROOM</span><span>3D ENVIRONMENT</span></div><GameScene onInteract={interact}/><div className="scene-footer"><span><i className="legend-dot teal"/> ARIA ACTIVE</span><span><i className="legend-dot orange"/> INTERACTABLE CONSOLE</span><span>SIMULATION TIME · 08:42</span></div></div><MissionPanel gameState={session?.game_state||{engineering_wing:'unknown',sensor:'uninspected',sensor_repaired:false}} missionStep={session?.mission.step||'investigate_engineering_wing'} onAction={runAction} busy={busy}/><div className="last-action"><span className="action-pip"/> <span><b>LAST SYSTEM DECISION</b><small>{lastAction}</small></span></div></div><div className="right-column"><DialoguePanel messages={messages} onSend={send} busy={busy}/><CognitiveInspector memories={memories} conflicts={conflicts} loading={busy}/></div></section>
- <footer className="footer"><span>REMNANT / PROTOTYPE BUILD 0.1</span><span>AI PROPOSES · SYSTEM VALIDATES · MEMORY PERSISTS</span><span>MADE FOR THE UNKNOWN</span></footer>
- </main>
+ const [session,setSession]=useState<Session|null>(null);
+ const [stalls,setStalls]=useState<Stall[]>([]);
+ const [activeId,setActiveId]=useState('');
+ const [messages,setMessages]=useState<ChatItem[]>([]);
+ const [allMessages,setAllMessages]=useState<ChatItem[]>([]);
+ const [memories,setMemories]=useState<Memory[]>([]);
+ const [conflicts,setConflicts]=useState<Conflict[]>([]);
+ const [busy,setBusy]=useState(false);
+ const [error,setError]=useState('');
+ const [online,setOnline]=useState(false);
+ const [provider,setProvider]=useState('');
+ const [gameStarted,setGameStarted]=useState(false);
+ const activeStall=useMemo(()=>stalls.find(stall=>stall.id===activeId)||null,[stalls,activeId]);
+ const toChat=(items:Array<{role:string;speaker:string|null;content:string}>):ChatItem[]=>items.map(x=>({role:x.role as ChatItem['role'],speaker:x.speaker,content:x.content}));
+
+ const refresh=useCallback(async(id:string,npcId='')=>{
+  try{
+   const [s,m,ch]=await Promise.all([api.session(id),api.memories(id),api.messages(id,npcId)]);
+   setSession(s);setMemories(m.memories);setConflicts(m.conflicts);
+   const transcript=toChat(ch.messages);
+   if(npcId)setMessages(transcript);
+   else setAllMessages(transcript);
+  }catch(e){setError(e instanceof Error?e.message:'Could not refresh plaza state')}
+ },[]);
+ const ensureSession=useCallback(async()=>{
+  if(session)return session;
+  const id=localStorage.getItem('remnant-session');
+  if(id){try{const existing=await api.session(id);setSession(existing);localStorage.setItem('remnant-session',id);setOnline(true);await refresh(id);return existing}catch{localStorage.removeItem('remnant-session')}}
+  const created=await api.createSession();setSession(created);setMessages([]);setAllMessages([]);setMemories([]);setConflicts([]);
+  localStorage.setItem('remnant-session',created.session_id);setOnline(true);setProvider('');return created;
+ },[refresh,session]);
+ useEffect(()=>{api.stalls().then(result=>setStalls(result.stalls)).catch(e=>setError(e instanceof Error?e.message:'Could not load the plaza'))},[]);
+ useEffect(()=>{
+  const id=localStorage.getItem('remnant-session');
+  if(id)refresh(id).then(()=>setOnline(true)).catch(()=>setOnline(false));
+ },[refresh]);
+ const start=async()=>{
+  setBusy(true);setError('');
+  try{await ensureSession();setActiveId('');setMessages([]);setGameStarted(true)}
+  catch(e){setOnline(false);setError(e instanceof Error?e.message:'Could not connect to the plaza')}
+  finally{setBusy(false)}
+ };
+ const selectStall=(id:string)=>{
+  setActiveId(id);
+  if(session)api.messages(session.session_id,id).then(result=>setMessages(toChat(result.messages))).catch(()=>setMessages([]));
+ };
+ const send=async(message:string)=>{
+  if(!session||!activeStall)return;
+  setBusy(true);setError('');setMessages(old=>[...old,{role:'player',content:message}]);
+  try{
+   const result=await api.dialogue(session.session_id,message,activeStall.id);
+   setMessages(old=>[...old,{role:'npc',speaker:result.npc.name,content:result.reply}]);
+   setProvider(result.provider);await refresh(session.session_id,activeStall.id);await refresh(session.session_id);
+  }catch(e){setError(e instanceof Error?e.message:'Conversation failed');setMessages(old=>[...old,{role:'npc',speaker:activeStall.vendor,content:'I’m sorry, the plaza connection dropped. Your conversation is still here—try again in a moment.'}])}
+  finally{setBusy(false)}
+ };
+ const gameState=session?.game_state||{game:'after_hours_city',place:'Old Town Square',visited:[],status:'roaming',last_event:'The evening lights are coming on.'};
+ const finish=()=>{setGameStarted(false);setActiveId('');if(session)refresh(session.session_id)};
+
+ if(!gameStarted)return <main className="landing-screen">
+  <header className="landing-topbar"><div className="brand"><div className="brand-mark"><Compass size={20}/></div><div><strong>PROJECT <span>REMNANT</span></strong><small>AFTER HOURS · FOOD PLAZA</small></div></div><div className={`landing-link ${online?'online':''}`}>{online?<Wifi size={14}/>:<WifiOff size={14}/>} {online?'YOUR EVENING IS SAVED':'A CITY FULL OF STORIES'}</div></header>
+  {error&&<div className="error-banner"><AlertOctagon size={16}/><span>{error}</span><button onClick={()=>setError('')}>Dismiss</button></div>}
+  <section className="landing-hero"><div className="landing-copy"><div className="eyebrow"><span className="red-dot"/> OLD TOWN · GOLDEN HOUR</div><h1>Come hungry.<br/><em>Leave with stories.</em></h1><p>Take a walk through a neighborhood food plaza. Meet the people behind the counters, talk about your day, and see what they remember next time.</p><button className="start-button" onClick={start} disabled={busy||stalls.length===0}><Play size={17} fill="currentColor"/>{busy?'OPENING THE PLAZA':'START YOUR EVENING'}<span>WASD TO WALK · SPACE TO TALK</span></button></div>
+   <div className="landing-scene-card"><div className="landing-scene-art"><div className="art-sun"/><div className="art-lantern lantern-a"/><div className="art-lantern lantern-b"/><div className="art-stall-row">{['🥟','🥞','🍲','🫓','🍨'].map((food,i)=><div className={`art-stall art-stall-${i}`} key={food}><span>{food}</span><i/></div>)}</div><div className="art-ground"/><div className="art-caption"><span>OLD TOWN FOOD PLAZA</span><small>18 COUNTERS · ONE LONG EVENING</small></div></div><div className="scene-card-foot"><span><i className="live-pip"/> PEOPLE TO MEET</span><span>TAKE YOUR TIME</span></div></div>
+  </section>
+  <section className="landing-stats"><article><span className="stat-icon"><Store size={17}/></span><div><b>{stalls.length||18}</b><small>LOCAL FOOD STALLS</small></div></article><article><span className="stat-icon"><Users size={17}/></span><div><b>{stalls.length||18}</b><small>PEOPLE BEHIND THE COUNTERS</small></div></article><article><span className="stat-icon"><MessageCircle size={17}/></span><div><b>{allMessages.filter(m=>m.role==='player').length}</b><small>THINGS YOU'VE SHARED</small></div></article><article><span className="stat-icon"><Sparkles size={17}/></span><div><b>{memories.length}</b><small>DETAILS THEY REMEMBER</small></div></article></section>
+  <footer className="landing-footer"><span>AN EVENING AT YOUR OWN PACE</span><span>GEMINI POWERED CONVERSATIONS · SAVED MEMORIES · VOICE CHAT</span></footer>
+ </main>;
+
+ return <main className="game-fullscreen">
+  <div className="game-world"><Suspense fallback={<div className="scene-loading">Setting up the evening market…</div>}><GameScene stalls={stalls} onTalk={selectStall} activeId={activeId}/></Suspense></div>
+  <aside className="game-sidebar"><div className="game-sidebar-top"><button className="back-button" onClick={finish}><ArrowLeft size={15}/> PLAZA HOME</button><div className={`connection ${online?'online':''}`}>{online?<Wifi size={13}/>:<WifiOff size={13}/>} {online?'SAVED VISIT':'LOCAL VISIT'}</div></div>
+   <div className="sidebar-context"><div className="eyebrow">{activeStall?'AT THE COUNTER':'YOUR EVENING'}</div><h1>{activeStall?activeStall.food:'Find your favorite spot'}</h1><p>{activeStall?`${activeStall.vendor} · ${activeStall.description}`:'Walk around the plaza and tap a stall when someone catches your eye.'}</p><div className="sidebar-tags"><span>{activeStall?activeStall.vendor.toUpperCase():'18 STALLS'}</span><span>{provider==='llm'?'GEMINI CONVERSATION':'PERSONAL STORIES'}</span></div></div>
+   <DialoguePanel messages={messages} onSend={send} busy={busy} stall={activeStall}/>
+   <div className="memory-peek"><span><Sparkles size={14}/> PLAZA MEMORY</span><b>{memories.length?memories[memories.length-1].claim_text:'Share a little about yourself. The vendors will remember.'}</b></div>
+   {error&&<div className="sidebar-error"><AlertOctagon size={14}/>{error}</div>}
+   <div className="game-controls"><span>WASD <small>WALK</small></span><span>SPACE <small>HOLD TO TALK</small></span><span>{gameState.visited?.length||0} <small>VISITED</small></span></div>
+  </aside>
+  <div className="game-brand"><b>REMNANT</b><span>OLD TOWN FOOD PLAZA</span></div>
+ </main>;
 }
