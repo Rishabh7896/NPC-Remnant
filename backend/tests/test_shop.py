@@ -212,3 +212,18 @@ def test_shop_rest_api_endpoints(db, session_row):
     res_w2 = client.get(f"/api/v1/sessions/{sid}/wallet")
     assert res_w2.json()["balance"] < 500
 
+
+
+def test_order_at_current_stall_does_not_loop_navigate(db, session_row):
+    """When player is at a stall and says 'order ka paratha', it must talk to the vendor and add to cart, not navigate."""
+    from app.services.conversation import interact
+
+    sid = session_row.id
+    res = interact(db, session_row, "order ka paratha", "evening_food_plaza", "paratha")
+    assert res["npc"]["id"] == "paratha"
+    assert res["npc"]["name"] == "Simran"
+    assert res["cart"] is not None
+    assert res["cart"]["subtotal"] >= 80
+    assert any(item["product_id"] == "aloo_paratha" for item in res["cart"]["items"])
+    assert "head over to" not in res["reply"].lower()
+

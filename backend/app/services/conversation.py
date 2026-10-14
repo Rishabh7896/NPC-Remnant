@@ -272,7 +272,7 @@ def interact(db: Session, row: SessionRow, message: str, location: str, npc_id: 
     ))
     intent = parsed["intent"]
     target_id = parsed["stall_id"]
-    if intent == "navigate" and target_id in STALL_BY_ID:
+    if intent == "navigate" and target_id in STALL_BY_ID and target_id != npc_id:
         game = json.loads(row.game_state_json)
         game["destination"] = target_id
         game["last_event"] = f"You are heading to {STALL_BY_ID[target_id]['food']}."

@@ -1,9 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, AlertOctagon, PanelLeftClose, PanelLeftOpen, Compass, LoaderCircle, Play, Sparkles, Store, Users, MessageCircle, Wifi, WifiOff, Coins, ShoppingCart, Receipt as ReceiptIcon, Utensils, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, AlertOctagon, PanelLeftClose, PanelLeftOpen, Compass, LoaderCircle, Play, Sparkles, Store, Users, MessageCircle, Wifi, WifiOff, Coins, ShoppingCart, Receipt as ReceiptIcon, Utensils, CheckCircle2, Music } from 'lucide-react';
 import type { Stall } from './scene/GameScene';
 import DialoguePanel, { type ChatItem } from './components/DialoguePanel';
 import CognitiveInspector from './components/CognitiveInspector';
 import ShopPanel from './components/ShopPanel';
+import { plazaAudio } from './audio/PlazaAudio';
 import { api } from './api/client';
 import type { Conflict, Memory, Session, Cart, Receipt, Wallet } from './types';
 
@@ -22,6 +23,7 @@ export default function App(){
  const [orders,setOrders]=useState<Receipt[]>([]);
  const [shopMode,setShopMode]=useState<'catalog'|'cart'|'receipts'|null>(null);
  const [latestReceipt,setLatestReceipt]=useState<Receipt|null>(null);
+ const [ambientAudio,setAmbientAudio]=useState(false);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [online,setOnline]=useState(false);
@@ -65,7 +67,15 @@ export default function App(){
  },[refresh]);
  const start=async()=>{
   setBusy(true);setError('');
-  try{await ensureSession();setActiveId('');setMessages([]);setSidebarMinimized(true);setGameStarted(true)}
+  try{
+    await ensureSession();
+    setActiveId('');
+    setMessages([]);
+    setSidebarMinimized(true);
+    setGameStarted(true);
+    plazaAudio.start();
+    setAmbientAudio(true);
+  }
   catch(e){setOnline(false);setError(e instanceof Error?e.message:'Could not connect to the plaza')}
   finally{setBusy(false)}
  };
@@ -103,7 +113,7 @@ export default function App(){
  };
  const arrive=(id:string)=>setArrivalId(id);
  const gameState=session?.game_state||{game:'after_hours_city',place:'Old Town Square',visited:[],status:'roaming',last_event:'The evening lights are coming on.'};
- const finish=()=>{setGameStarted(false);setActiveId('');if(session)refresh(session.session_id)};
+ const finish=()=>{setGameStarted(false);setActiveId('');plazaAudio.stop();setAmbientAudio(false);if(session)refresh(session.session_id)};
 
  if(!gameStarted)return <main className="landing-screen">
   <header className="landing-topbar"><div className="brand"><div className="brand-mark"><Compass size={20}/></div><div><strong>PROJECT <span>REMNANT</span></strong><small>AFTER HOURS · FOOD PLAZA</small></div></div><div className={`landing-link ${online?'online':''}`}>{online?<Wifi size={14}/>:<WifiOff size={14}/>} {online?'YOUR EVENING IS SAVED':'A CITY FULL OF STORIES'}</div></header>
@@ -123,6 +133,7 @@ export default function App(){
     <div className="game-sidebar-top">
       <button className="back-button" onClick={finish}><ArrowLeft size={15}/> PLAZA HOME</button>
       <div className="commerce-hud">
+        <button className={`hud-chip audio-chip ${ambientAudio ? 'active' : ''}`} onClick={()=>setAmbientAudio(plazaAudio.toggle())} title="Dusk Plaza Background Ambient Music"><Music size={13}/> {ambientAudio ? 'MUSIC ON' : 'MUSIC OFF'}</button>
         <button className="hud-chip wallet-chip" onClick={()=>setShopMode('cart')} title="Wallet Balance"><Coins size={13}/> ₹{wallet?.balance ?? 500}</button>
         <button className={`hud-chip cart-chip ${cart?.items?.length ? 'has-items' : ''}`} onClick={()=>setShopMode('cart')} title="View Order Cart"><ShoppingCart size={13}/> {cart?.items?.length || 0} {cart?.total ? `· ₹${cart.total}` : ''}</button>
         <button className="hud-chip receipts-chip" onClick={()=>setShopMode('receipts')} title="Order Receipts"><ReceiptIcon size={13}/> {orders.length}</button>
@@ -151,7 +162,7 @@ export default function App(){
     <DialoguePanel messages={messages} onSend={send} busy={busy} stall={activeStall}/>
     <div className="memory-peek"><span><Sparkles size={14}/> PLAZA MEMORY</span><b>{memories.length?memories[memories.length-1].claim_text:'Share a little about yourself or order your favorites. The vendors will remember.'}</b></div>
     {error&&<div className="sidebar-error"><AlertOctagon size={14}/>{error}</div>}
-    <div className="game-controls"><span>WASD <small>WALK</small></span><span>SPACE <small>TALK</small></span><span>₹{wallet?.balance ?? 500} <small>WALLET</small></span><span>{gameState.visited?.length||0} <small>VISITED</small></span></div>
+    <div className="game-controls"><span>A / D <small>STEER</small></span><span>W / UP <small>WALK</small></span><span>SPACE <small>TALK</small></span><span>₹{wallet?.balance ?? 500} <small>WALLET</small></span><span>{gameState.visited?.length||0} <small>VISITED</small></span></div>
    </div>
   </aside>
   <div className="game-brand"><b>REMNANT</b><span>OLD TOWN FOOD PLAZA</span></div>

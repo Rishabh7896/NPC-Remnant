@@ -100,8 +100,24 @@ function Walker({ target, targetId, onArrive, onManual, playerRef, stalls, sitti
     if(manual&&!manualActive.current){manualActive.current=true;onManual()}
     if(!manual&&manualActive.current){manualActive.current=false;if(target){path.current=findWalkPath(ref.position,target,stalls);pathIndex.current=path.current.length>1?1:0}}
     const desired=new THREE.Vector3();
-    if(manual){desired.set((controls.right?1:0)-(controls.left?1:0),0,(controls.backward?1:0)-(controls.forward?1:0));if(desired.lengthSq())desired.normalize().multiplyScalar(3.0)}
-    else if(target&&path.current.length){
+    if(manual){
+      // Left / Right keys change direction (steering), Up key walks forward
+      const turnSpeed=2.8;
+      if(controls.left&&!controls.right){
+        ref.rotation.y+=turnSpeed*dt;
+      }else if(controls.right&&!controls.left){
+        ref.rotation.y-=turnSpeed*dt;
+      }
+
+      const facingX=Math.sin(ref.rotation.y);
+      const facingZ=Math.cos(ref.rotation.y);
+
+      if(controls.forward&&!controls.backward){
+        desired.set(facingX*3.0,0,facingZ*3.0);
+      }else if(controls.backward&&!controls.forward){
+        desired.set(-facingX*1.8,0,-facingZ*1.8);
+      }
+    }else if(target&&path.current.length){
       while(pathIndex.current<path.current.length&&Math.hypot(path.current[pathIndex.current].x-ref.position.x,path.current[pathIndex.current].z-ref.position.z)<0.24)pathIndex.current++;
       if(pathIndex.current>=path.current.length){if(arrivedTarget.current!==targetId){arrivedTarget.current=targetId;onArrive(targetId)}}
       else{const waypoint=path.current[pathIndex.current];const dx=waypoint.x-ref.position.x,dz=waypoint.z-ref.position.z,distance=Math.hypot(dx,dz);const speed=Math.min(2.9,0.65+distance*1.25);desired.set(dx/Math.max(distance,0.001)*speed,0,dz/Math.max(distance,0.001)*speed)}
@@ -117,9 +133,11 @@ function Walker({ target, targetId, onArrive, onManual, playerRef, stalls, sitti
     }
     ref.position.x=nextX;ref.position.z=nextZ;
     const moving=velocity.current.length()>0.12;
-    if(moving){const facing=Math.atan2(velocity.current.x,velocity.current.z);const turn=Math.atan2(Math.sin(facing-ref.rotation.y),Math.cos(facing-ref.rotation.y));ref.rotation.y+=turn*(1-Math.exp(-10*dt))}
-    ref.position.y=THREE.MathUtils.damp(ref.position.y,moving?Math.sin(state.clock.elapsedTime*10)*0.035:0,10,dt);
-    const stride=moving?Math.sin(state.clock.elapsedTime*9)*0.54:0, counter=moving?Math.sin(state.clock.elapsedTime*9+Math.PI)*0.54:0;
+    if(!manual&&moving){const facing=Math.atan2(velocity.current.x,velocity.current.z);const turn=Math.atan2(Math.sin(facing-ref.rotation.y),Math.cos(facing-ref.rotation.y));ref.rotation.y+=turn*(1-Math.exp(-10*dt))}
+    const turningInPlace=manual&&(controls.left||controls.right)&&!controls.forward&&!controls.backward;
+    ref.position.y=THREE.MathUtils.damp(ref.position.y,moving?Math.sin(state.clock.elapsedTime*10)*0.035:turningInPlace?Math.sin(state.clock.elapsedTime*6)*0.012:0,10,dt);
+    const stride=moving?Math.sin(state.clock.elapsedTime*9)*0.54:turningInPlace?Math.sin(state.clock.elapsedTime*6)*0.18:0;
+    const counter=moving?Math.sin(state.clock.elapsedTime*9+Math.PI)*0.54:turningInPlace?Math.sin(state.clock.elapsedTime*6+Math.PI)*0.18:0;
     if(torso.current){torso.current.rotation.y=THREE.MathUtils.damp(torso.current.rotation.y,moving?stride*.07:0,8,dt);torso.current.rotation.z=THREE.MathUtils.damp(torso.current.rotation.z,moving?stride*.025:0,8,dt)}
     if(leftArm.current)leftArm.current.rotation.x=THREE.MathUtils.damp(leftArm.current.rotation.x,counter*.76,11,dt);
     if(rightArm.current)rightArm.current.rotation.x=THREE.MathUtils.damp(rightArm.current.rotation.x,stride*.76,11,dt);
@@ -216,6 +234,6 @@ export default function GameScene({stalls,onTalk,activeId,onArrive}:{stalls:Stal
     {name:'forward',keys:['ArrowUp','KeyW']},{name:'backward',keys:['ArrowDown','KeyS']},
     {name:'left',keys:['ArrowLeft','KeyA']},{name:'right',keys:['ArrowRight','KeyD']},
   ]}><Canvas shadows dpr={[1,1.75]} gl={{antialias:true}} camera={{position:[0,5.1,21.3],fov:58}}><Plaza stalls={stalls} onTalk={onTalk} activeId={activeId} onArrive={onArrive}/></Canvas></KeyboardControls>
-    <div className="scene-hint">WASD / ARROWS TO WANDER · CLICK OR TELL ME WHERE TO GO</div>
+    <div className="scene-hint">A / D / ARROWS TO STEER · W / UP ARROW TO WALK · SPACE TO TALK</div>
   </div>;
 }

@@ -80,24 +80,30 @@ async def generate_interaction(
     past_orders: Optional[list[str]] = None,
 ) -> dict:
     """Generate in-character stall vendor reply, structured shopping intent, and extracted memories."""
+    vendor_name = character.get("vendor", "Stall Vendor")
+    stall_food = character.get("food", "Street Food")
+
     system = (
-        "You are an AI-powered stall vendor in a lively Indian evening food plaza. Reply warmly and naturally in character. "
-        "You sell authentic street food from your stall catalog. Use the exact product names and prices in ₹ (INR) provided. "
-        "Never invent menu items, fake prices, or allergen claims not found in the catalog. "
-        "You can chat, recommend dishes, explain ingredients/allergens, negotiate discounts within policy, and take orders. "
+        f"You are {vendor_name}, running the {stall_food} counter at the evening food plaza. "
+        "Talk like a normal, down-to-earth human person having a real conversation across the counter. "
+        "Be natural, relaxed, friendly, and direct. Do NOT sound theatrical, dramatic, or like an exaggerated cartoon caricature. Do not force catchphrases or slogans. "
+        "Speak casually in 1 or 2 short, grounded sentences, just like a real person talking to a customer. "
+        "Match the language the customer uses (English, Hindi, or natural everyday Hinglish). "
+        "Only offer items that exist in your stall catalog. Use the exact product names and prices in ₹ (INR) provided. "
+        "Never invent items or fake prices not in the catalog. "
         "Return ONLY a JSON object with keys: "
-        "reply (string, vendor in-character dialogue), "
+        "reply (string, what you say to the customer naturally), "
         "memories (array of {claim_text, value} about the player's personal preferences), "
         "action (object with type: 'none' | 'offer_quest' | 'accept_quest' | 'recommend_dish' | 'record_discovery'), "
         "commerce_intent (string: 'general_chat' | 'product_inquiry' | 'add_to_cart' | 'remove_from_cart' | 'negotiate_discount' | 'confirm_order' | 'cancel_cart'), "
         "items (array of {product_id: string, quantity: integer, variant_id: string, add_on_ids: array of strings}), "
         "proposed_discount (integer in ₹, if offering a discount or bargaining). "
         "Rules: "
-        "1. If player asks to order, buy, try, or add food, set commerce_intent='add_to_cart' and list the items. "
-        "2. If player asks for a discount/bargain and you agree, set commerce_intent='negotiate_discount' and specify proposed_discount in ₹. "
-        "3. If player explicitly confirms an order (e.g. 'yes', 'confirm', 'place order', 'go ahead', 'done'), set commerce_intent='confirm_order'. "
-        "4. If player wants to remove an item or cancel, set commerce_intent='remove_from_cart' or 'cancel_cart'. "
-        "5. If past orders are provided, acknowledge them warmly when relevant ('Welcome back! Your usual?')."
+        "1. If customer asks for food or wants to buy something, acknowledge it normally, set commerce_intent='add_to_cart' and list the items. "
+        "2. If customer asks for a discount and you can give one, reply naturally (e.g. 'Sure, I can do ₹10 off'), set commerce_intent='negotiate_discount' and specify proposed_discount in ₹. "
+        "3. If customer confirms an order, say a normal confirmation (e.g. 'Great, order placed! It will be ready in a few minutes'), and set commerce_intent='confirm_order'. "
+        "4. If customer wants to remove an item or cancel, acknowledge calmly and set commerce_intent='remove_from_cart' or 'cancel_cart'. "
+        "5. If past orders are provided, acknowledge them naturally like a regular customer."
     )
     context = {
         "character": character,
@@ -151,15 +157,34 @@ async def generate_interaction(
 
 async def interpret_player_input(*, message: str, current_stall: str = "", game_state: Optional[dict] = None, memories: Optional[list[dict]] = None, recent_history: Optional[list[dict]] = None) -> dict:
     """Use the configured model to understand whether the player wants to move or talk."""
+    msg_lower = message.casefold().strip()
+
+    # If already at a stall and user is ordering, asking questions, or conversing, it is talking, not navigating!
+    order_or_chat_keywords = [
+        "order", "buy", "pack", "plate", "give", "get", "have", "want", "chahiye", "dena", "de do", "kardo",
+        "dosa", "paratha", "chai", "puri", "chaat", "momos", "roll", "biryani", "lassi", "dhokla", "poha",
+        "uttapam", "kulfi", "jalebi", "vada", "bhaji", "coffee", "price", "cost", "kitna", "discount", "confirm",
+        "yes", "spicy", "chutney", "butter", "sweet", "hello", "hi", "hey"
+    ]
+    explicit_move_keywords = [
+        "take me to", "take me", "walk to", "go to", "lead me to", "show me where", "head over to",
+        "head to", "bring me to", "chalo", "le chalo", "surprise me", "take us to", "walk over"
+    ]
+
+    has_move = any(kw in msg_lower for kw in explicit_move_keywords)
+    if current_stall and not has_move and any(kw in msg_lower for kw in order_or_chat_keywords):
+        return {"intent": "talk", "stall_id": current_stall, "reply": "", "provider": "deterministic"}
+
     system = (
         "You are the natural-language game director for a cozy, lively 3D Indian food plaza. "
         "Understand casual commands, typos, indirect requests, preferences, and speech-to-text phrasing. Resolve food, stall, or vendor references against the supplied plaza roster. "
-        "Return JSON only with keys intent, stall_id, reply. intent must be navigate, talk, or plaza_chat. "
-        "Use navigate when the player wants their avatar to go, walk, take me, lead me, show me, find me, or surprise them with a specific or suitable stall. A craving or preference such as wanting something spicy/sweet/comforting can imply finding and walking to a suitable stall; pick the best roster match. Use saved preferences and recent conversation to make recommendations personal. "
-        "Use talk when they want to speak to or ask a named vendor/stall. Use plaza_chat for other conversation, including personal chat and questions that do not imply walking. "
-        "Only choose a stall_id that exactly appears in the roster; use an empty string when no specific stall is clear. "
-        "For navigate, write a short playful in-world acknowledgment that names the destination and adds a little personality, in the player's language. For plaza_chat, leave reply empty. "
-        "If the target is ambiguous, choose plaza_chat and ask one natural clarifying question in reply. Never claim the avatar moved; the game will do that."
+        "Return JSON only with keys: intent, stall_id, reply. intent MUST be navigate, talk, or plaza_chat. "
+        "CRITICAL RULES: "
+        "1. If current_stall_id is provided AND the player is ordering food, asking for a dish, asking prices, bargaining, saying yes/confirm, or chatting (e.g. 'order ka paratha', 'ek dosa dena', 'give me 2', 'how much', 'discount', 'confirm order', 'hello'): "
+        "   intent MUST be 'talk', and stall_id MUST be current_stall_id! NEVER choose 'navigate' when the player is ordering or talking at their current stall! "
+        "2. If the destination stall_id matches current_stall_id, intent MUST be 'talk', NEVER 'navigate' (the player is already there!). "
+        "3. Only use 'navigate' when the player explicitly wants to MOVE, WALK, LEAVE, or GO to a different stall (e.g. 'take me to', 'walk to', 'let's go to', 'lead me to', 'show me where the chai stall is'). "
+        "4. For navigate, write a short playful in-world acknowledgment that names the destination and adds personality. For talk and plaza_chat, leave reply empty."
     )
     payload = {
         "plaza_stalls": [{"id": s["id"], "food": s["food"], "vendor": s["vendor"]} for s in STALLS],
@@ -177,13 +202,20 @@ async def interpret_player_input(*, message: str, current_stall: str = "", game_
             intent = parsed.get("intent")
             stall_id = str(parsed.get("stall_id") or "")
             valid_ids = {stall["id"] for stall in STALLS}
+
+            # Safety override: if player is already at the target stall, it's talking, not navigating!
+            if current_stall and (stall_id == current_stall or not stall_id):
+                if intent == "navigate":
+                    intent = "talk"
+                    stall_id = current_stall
+
             if intent in {"navigate", "talk", "plaza_chat"} and (not stall_id or stall_id in valid_ids):
                 return {
                     "intent": intent,
                     "stall_id": stall_id,
-                    "reply": str(parsed.get("reply") or "").strip(),
+                    "reply": str(parsed.get("reply") or "").strip() if intent == "navigate" else "",
                     "provider": "llm",
                 }
         except Exception:
             logger.exception("LLM input interpretation failed; treating input as plaza conversation")
-    return {"intent": "plaza_chat", "stall_id": "", "reply": "", "provider": "offline"}
+    return {"intent": "talk" if current_stall else "plaza_chat", "stall_id": current_stall, "reply": "", "provider": "offline"}
