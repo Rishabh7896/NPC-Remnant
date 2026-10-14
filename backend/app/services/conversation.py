@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 from uuid import uuid4
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +13,117 @@ from app.services.memory_service import get_memories, get_relevant_memories, mem
 from app.services.gameplay_service import apply_action, eligible_quests, progress_quests_for_visit, relationship_for
 from app.services.run_service import initial_run
 from app.stalls import STALL_BY_ID, vendor_context
+from app.data.catalog import get_stall_catalog, find_products_by_keyword, get_product
+from app.services import shop_service
+
+
+def _extract_quantity(msg: str) -> int:
+    num_words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6}
+    for word in msg.casefold().split():
+        if word in num_words:
+            return num_words[word]
+    return 1
+
+
+def handle_commerce(
+    db: Session,
+    session_id: str,
+    vendor_id: str,
+    commerce: dict,
+    message: str,
+) -> tuple[dict, Optional[dict], list[dict]]:
+    """Authoritatively process conversational commerce from LLM proposals or deterministic fallback."""
+    events = []
+    receipt = None
+    msg_lower = message.casefold().strip()
+
+    intent = commerce.get("intent", "general_chat") if commerce else "general_chat"
+
+    # Deterministic confirmation check
+    confirm_phrases = ["order it", "place order", "place the order", "yes go ahead", "yes please", "confirm order", "confirm purchase", "pay now", "i'll buy it", "i will buy it"]
+    if any(phrase in msg_lower for phrase in confirm_phrases) or (msg_lower in ["yes", "confirm", "done", "order"]):
+        intent = "confirm_order"
+
+    # Deterministic discount check
+    discount_phrases = ["discount", "cheaper", "bargain", "kam karo", "kam kardo", "concession", "deal on price"]
+    if any(phrase in msg_lower for phrase in discount_phrases):
+        if intent != "confirm_order":
+            intent = "negotiate_discount"
+
+    # Deterministic cancellation check
+    if any(phrase in msg_lower for phrase in ["cancel order", "cancel cart", "clear cart", "empty cart", "never mind", "forget it"]):
+        intent = "cancel_cart"
+
+    # Execute intent
+    if intent == "confirm_order":
+        ok, rec, note = shop_service.execute_checkout(db, session_id)
+        if ok and rec:
+            receipt = rec
+            events.append({"type": "order_confirmed", "receipt": rec, "note": note})
+
+    elif intent == "negotiate_discount":
+        prop = commerce.get("proposed_discount", 10) or 10
+        ok, cart_row, approved, note = shop_service.apply_negotiated_discount(
+            db, session_id, vendor_id, proposed_discount_rupees=prop, reason="conversational_negotiation"
+        )
+        if ok:
+            events.append({"type": "discount_applied", "discount": approved, "note": note})
+
+    elif intent == "cancel_cart":
+        shop_service.clear_cart(db, session_id)
+        events.append({"type": "cart_cleared", "note": "Cart has been cleared."})
+
+    elif intent == "remove_from_cart":
+        items = commerce.get("items", [])
+        for item in items:
+            pid = item.get("product_id")
+            if pid:
+                shop_service.remove_from_cart(db, session_id, vendor_id, pid)
+        events.append({"type": "cart_updated"})
+
+    elif intent == "add_to_cart":
+        items = commerce.get("items", [])
+        if items:
+            for item in items:
+                pid = item.get("product_id")
+                qty = item.get("quantity", 1)
+                var_id = item.get("variant_id")
+                add_ons = item.get("add_on_ids", [])
+                if pid:
+                    ok, _, note = shop_service.add_to_cart(
+                        db, session_id, vendor_id, pid, quantity=qty, variant_id=var_id, add_on_ids=add_ons
+                    )
+                    if ok:
+                        events.append({"type": "item_added_to_cart", "product_id": pid, "quantity": qty, "note": note})
+        else:
+            matches = find_products_by_keyword(message, vendor_id)
+            if matches:
+                chosen = matches[0]
+                qty = _extract_quantity(message)
+                ok, _, note = shop_service.add_to_cart(db, session_id, vendor_id, chosen["product_id"], quantity=qty)
+                if ok:
+                    events.append({"type": "item_added_to_cart", "product_id": chosen["product_id"], "quantity": qty, "note": note})
+
+    elif any(kw in msg_lower for kw in ["want", "give me", "get me", "have", "add", "take", "pack", "order", "get", "buy", "can i"]) and not receipt:
+        matches = find_products_by_keyword(message, vendor_id)
+        if matches:
+            chosen = matches[0]
+            qty = _extract_quantity(message)
+            ok, _, note = shop_service.add_to_cart(db, session_id, vendor_id, chosen["product_id"], quantity=qty)
+            if ok:
+                events.append({"type": "item_added_to_cart", "product_id": chosen["product_id"], "quantity": qty, "note": note})
+
+    cart = shop_service.get_or_create_cart(db, session_id, vendor_id)
+    cart_dict = {
+        "cart_id": cart.id,
+        "vendor_id": cart.vendor_id,
+        "items": json.loads(cart.items_json),
+        "subtotal": cart.subtotal,
+        "discount_amount": cart.discount_amount,
+        "total": cart.total,
+        "state": cart.state,
+    }
+    return cart_dict, receipt, events
 
 
 def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: str):
@@ -54,6 +166,23 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
     ).all()
     history = [{"speaker": item.role, "text": item.content} for item in reversed(messages)]
 
+    if stall:
+        catalog = get_stall_catalog(stall["id"])
+        cart_row = shop_service.get_or_create_cart(db, row.id, stall["id"])
+        cart_data = {
+            "items": json.loads(cart_row.items_json),
+            "subtotal": cart_row.subtotal,
+            "discount_amount": cart_row.discount_amount,
+            "total": cart_row.total,
+        }
+        wallet_balance = shop_service.get_wallet_balance(db, row.id)
+        past_orders = shop_service.get_vendor_order_memory(db, row.id, stall["id"])
+    else:
+        catalog = []
+        cart_data = {}
+        wallet_balance = shop_service.get_wallet_balance(db, row.id)
+        past_orders = []
+
     result = asyncio.run(generate_interaction(
         message=message,
         memories=memories,
@@ -62,8 +191,27 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
         character=character,
         relationship=relationship,
         eligible_quests=eligible_quests(game, npc_id) if stall else [],
+        catalog=catalog,
+        cart=cart_data,
+        wallet_balance=wallet_balance,
+        past_orders=past_orders,
     ))
     game, action_events = apply_action(game, npc_id, result.get("action")) if stall else (game, [])
+
+    if stall:
+        cart_snapshot, receipt, commerce_events = handle_commerce(
+            db, row.id, stall["id"], result.get("commerce", {}), message
+        )
+        if receipt:
+            relationship["trust"] = min(1.0, round(relationship["trust"] + 0.15, 2))
+            relationship["familiarity"] += 2
+            if "Completed an order" not in relationship["milestones"]:
+                relationship["milestones"].append("Completed an order")
+            game["last_event"] = f"Purchased food from {speaker_name} (₹{receipt['total']})."
+    else:
+        cart_snapshot = None
+        receipt = None
+        commerce_events = []
 
     new_memories = []
     added_keys = set()
@@ -103,7 +251,10 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
         "memories": [memory_dict(item) for item in get_memories(db, row.id, limit=500)],
         "game_state": game,
         "provider": result["provider"],
-        "events": progress_events + action_events,
+        "events": progress_events + action_events + commerce_events,
+        "cart": cart_snapshot,
+        "wallet": {"balance": shop_service.get_wallet_balance(db, row.id), "currency": "INR"},
+        "receipt": receipt,
     }
 
 

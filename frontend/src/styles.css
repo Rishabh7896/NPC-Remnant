@@ -32,3 +32,110 @@
 @keyframes screen-enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .landing-screen,.game-fullscreen{animation:screen-enter .32s cubic-bezier(.2,.75,.25,1) both}.sidebar-restore-row{z-index:2}.sidebar-minimized .sidebar-content{transition:opacity .16s ease,transform .24s ease,visibility 0s linear .24s}.sidebar-minimized .sidebar-restore-row .sidebar-home{transition:background-color .16s,color .16s,border-color .16s,transform .16s}.sidebar-minimized .sidebar-restore-row .sidebar-home:hover{background:#252a28;border-color:#80613e;color:#f4c38e;transform:translateY(-1px)}.sidebar-minimized .sidebar-content .game-sidebar-top{justify-content:flex-start}.sidebar-minimized:focus-within .sidebar-content{visibility:hidden}.start-button:focus-visible,.back-button:focus-visible,.sidebar-minimize:focus-visible,.sidebar-expand:focus-visible,.transcript-toggle:focus-visible,.voice-toggle:focus-visible,.chat-form button:focus-visible{outline:2px solid #f4c38e;outline-offset:2px}
 @media(prefers-reduced-motion:reduce){.landing-screen,.game-fullscreen{animation:none}.sidebar-minimized .sidebar-content{transition:none}}
+
+/* Conversational Commerce & Shopkeeping */
+.commerce-hud{display:flex;align-items:center;gap:6px;margin:0 auto 0 8px}
+.hud-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:6px;font:600 11px 'DM Mono';background:#182226;border:1px solid #32434a;color:#d7e4e8;cursor:pointer;transition:all .16s ease}
+.hud-chip:hover{background:#233238;border-color:#536f78;color:#fff;transform:translateY(-1px)}
+.hud-chip.wallet-chip{color:#ffd07b;border-color:#5a4928;background:#241d13}
+.hud-chip.cart-chip.has-items{background:#352718;color:#ffbe76;border-color:#7c552b;box-shadow:0 0 10px #ff9b3022}
+.hud-chip.receipts-chip{color:#9be2d0;border-color:#2a5047;background:#142723}
+
+.stall-commerce-actions{display:flex;gap:7px;margin:10px 0 6px}
+.stall-action-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:6px;font:700 10px 'DM Mono';cursor:pointer;transition:all .16s ease;border:1px solid transparent}
+.stall-action-btn.menu-btn{background:#e89f46;color:#181005}
+.stall-action-btn.menu-btn:hover{background:#fbb660;transform:translateY(-1px)}
+.stall-action-btn.cart-btn{background:#232d33;color:#e1e9ed;border-color:#42555e}
+.stall-action-btn.cart-btn:hover{background:#2f3c44;border-color:#657f8c}
+
+.order-toast{display:flex;align-items:center;gap:8px;padding:9px 12px;margin:8px 0;background:#18362b;border:1px solid #2f6b56;border-radius:8px;color:#d3f3e6;animation:screen-enter .2s ease}
+.toast-icon{color:#6de4b3;flex-shrink:0}
+.toast-copy{flex:1;display:flex;flex-direction:column;font-size:11px}
+.toast-copy small{color:#9fdac0;font-size:10px}
+.view-receipt-btn{padding:4px 8px;border-radius:5px;background:#2d5849;border:1px solid #48846f;color:#e8fbf3;font:600 10px 'DM Mono';cursor:pointer}
+.view-receipt-btn:hover{background:#3c725f}
+.toast-close{background:none;border:none;color:#8abfae;cursor:pointer;padding:2px 4px;font-size:12px}
+
+/* Shop Modal */
+.shop-modal-backdrop{position:fixed;inset:0;background:#000000a6;backdrop-filter:blur(6px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+.shop-modal{width:min(780px,96vw);max-height:88vh;background:#12181de8;backdrop-filter:blur(24px);border:1px solid #36444d;border-radius:12px;box-shadow:0 24px 60px #000c;display:flex;flex-direction:column;overflow:hidden;animation:screen-enter .24s cubic-bezier(.2,.8,.2,1)}
+.shop-modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-bottom:1px solid #26333b;background:#17202780}
+.shop-modal-tabs{display:flex;gap:6px}
+.tab-btn{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:7px;font:600 11px 'DM Mono';background:none;border:1px solid transparent;color:#94a6b0;cursor:pointer;transition:all .15s}
+.tab-btn:hover{color:#e6edf0;background:#202a32}
+.tab-btn.active{background:#233039;border-color:#485e6b;color:#f3f7f9}
+.shop-modal-top-right{display:flex;align-items:center;gap:10px}
+.wallet-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:6px;background:#2b2214;border:1px solid #6b522b;color:#fcd074;font:700 12px 'DM Mono'}
+.close-btn{display:grid;place-items:center;width:30px;height:30px;border-radius:6px;background:#222d35;border:1px solid #394a54;color:#b1c2cb;cursor:pointer;transition:all .15s}
+.close-btn:hover{background:#32424c;color:#fff}
+
+.shop-error-banner{display:flex;align-items:center;gap:8px;padding:9px 16px;background:#3b1e1b;border-bottom:1px solid #6e322b;color:#fca597;font-size:11px}
+.shop-modal-body{flex:1;overflow-y:auto;padding:18px}
+.stall-info-card{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 16px;border-radius:9px;background:#1a232b;border:1px solid #2f3e49;margin-bottom:16px}
+.stall-info-card h2{margin:3px 0 6px;font:700 17px 'Space Grotesk';color:#f5f7fa}
+.policy-note{margin:0;display:inline-flex;align-items:center;gap:6px;color:#f7b76d;font-size:11px}
+
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+.product-card{display:flex;flex-direction:column;padding:14px;border-radius:9px;background:#161f26;border:1px solid #2c3a44;transition:border-color .16s}
+.product-card:hover{border-color:#4a606e}
+.product-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}
+.product-category{font:9px 'DM Mono';color:#8fa7b2;text-transform:uppercase;letter-spacing:.8px}
+.product-card-top h3{margin:2px 0 0;font:600 14px 'Space Grotesk';color:#eff4f7}
+.price-tag{font:700 15px 'DM Mono';color:#ffd07b;padding:3px 8px;border-radius:5px;background:#241d13;border:1px solid #5a4625}
+.product-desc{margin:0 0 10px;color:#9eb0ba;font-size:11px;line-height:1.45;flex:1}
+
+
+.product-meta{display:flex;align-items:center;gap:8px;color:#7c919d;font-size:10px;margin-bottom:10px;flex-wrap:wrap}
+.allergen-pill{padding:2px 6px;border-radius:4px;background:#35201c;color:#e89082;border:1px solid #66362f}
+
+.variants-row,.addons-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:8px;font-size:10px}
+.variants-row .label,.addons-row .label{color:#889ca6;font-size:10px}
+.variant-chip,.addon-chip{padding:3px 7px;border-radius:5px;border:1px solid #30404b;background:#1d2730;color:#bac8d0;font:10px 'DM Mono';cursor:pointer;transition:all .12s}
+.variant-chip:hover,.addon-chip:hover{background:#2a3844;color:#fff}
+.variant-chip.selected,.addon-chip.checked{background:#25413c;border-color:#487e72;color:#91edd9}
+
+.product-actions{margin-top:auto;padding-top:8px}
+.add-to-cart-btn{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;border-radius:7px;background:#d89849;border:1px solid #f0b56b;color:#181005;font:700 11px 'DM Mono';cursor:pointer;transition:all .15s}
+.add-to-cart-btn:hover:not(:disabled){background:#ebb165;transform:translateY(-1px)}
+.add-to-cart-btn:disabled{opacity:.4;cursor:not-allowed}
+
+.cart-content{display:flex;flex-direction:column;gap:14px}
+.cart-items-list{display:flex;flex-direction:column;gap:8px}
+.cart-item-row{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:7px;background:#172027;border:1px solid #2b3943}
+.cart-item-info{display:flex;flex-direction:column;gap:3px;font-size:13px;color:#eff4f6}
+.item-variant{font-size:10px;color:#82cbb9}
+.item-addon{font-size:10px;color:#d5ab71}
+.cart-item-price{display:flex;align-items:center;gap:10px;font:700 13px 'DM Mono';color:#ffd07b}
+.remove-btn{display:grid;place-items:center;width:26px;height:26px;border-radius:5px;background:#2d1b1a;border:1px solid #572a27;color:#fca192;cursor:pointer}
+.remove-btn:hover{background:#452422}
+
+.cart-bargain-box{padding:12px 14px;border-radius:8px;background:#241d13;border:1px solid #554021;color:#f3dfb9}
+.cart-bargain-box p{margin:4px 0 10px;font-size:11px;color:#c9b389}
+.bargain-row{display:flex;gap:8px}
+.bargain-row input{flex:1;padding:7px 11px;border-radius:6px;background:#15120c;border:1px solid #4a3619;color:#ffeecb;font:12px 'DM Mono'}
+.bargain-row button{padding:7px 13px;border-radius:6px;background:#a7722d;border:1px solid #cca155;color:#fff;font:700 11px 'DM Mono';cursor:pointer}
+.bargain-row button:hover{background:#bd8539}
+
+.cart-summary{padding:14px;border-radius:8px;background:#161e25;border:1px solid #2d3b45;display:flex;flex-direction:column;gap:8px}
+.summary-line{display:flex;justify-content:space-between;font-size:12px;color:#a4b6bf}
+.summary-line.discount{color:#76d7b9}
+.summary-line.total{font:700 16px 'DM Mono';color:#ffd07b;padding-top:6px;border-top:1px solid #2c3a44}
+.checkout-actions{display:flex;gap:10px;margin-top:10px}
+.clear-btn{padding:9px 15px;border-radius:7px;background:#281b1c;border:1px solid #542d2f;color:#e89895;font:600 11px 'DM Mono';cursor:pointer}
+.clear-btn:hover{background:#3b2325}
+.checkout-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;border-radius:7px;background:#358467;border:1px solid #53b38f;color:#fff;font:700 13px 'DM Mono';cursor:pointer;transition:all .15s}
+.checkout-btn:hover:not(:disabled){background:#429c7b;transform:translateY(-1px)}
+.checkout-btn:disabled{opacity:.45;cursor:not-allowed}
+.insufficient-funds-warning{margin:6px 0 0;color:#fca597;font-size:10px;line-height:1.4}
+
+.receipts-list{display:flex;flex-direction:column;gap:10px}
+.receipt-card{padding:12px 14px;border-radius:8px;background:#15221e;border:1px solid #2b493f;color:#d7ece4}
+.receipt-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.receipt-header b{font:700 12px 'DM Mono';color:#a7edd9}
+.receipt-vendor{display:block;font-size:11px;color:#83ab9d}
+.receipt-status{display:inline-flex;align-items:center;gap:5px;font:700 10px 'DM Mono';color:#6de4b3}
+.receipt-items{display:flex;flex-direction:column;gap:4px;padding:6px 0;border-top:1px dashed #28443b;border-bottom:1px dashed #28443b;font-size:11px}
+.receipt-item-line{display:flex;justify-content:space-between;color:#bed8ce}
+.receipt-footer{display:flex;justify-content:space-between;align-items:center;padding-top:8px;font:700 12px 'DM Mono';color:#ffd07b}
+.receipt-footer small{color:#7fa498;font-weight:400}
+
