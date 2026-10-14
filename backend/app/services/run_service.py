@@ -8,4 +8,7 @@ def initial_run():
         "visited": [],
         "status": "roaming",
         "last_event": "The evening lights are coming on. Pick a direction and meet the people around you.",
+        "relationships": {},
+        "quests": {},
+        "discoveries": [],
     }

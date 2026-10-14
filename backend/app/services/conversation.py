@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.models import MemoryRow, MessageRow, SessionRow
 from app.services.llm_service import generate_interaction, interpret_player_input
-from app.services.memory_service import get_memories, memory_dict
+from app.services.memory_service import get_memories, get_relevant_memories, memory_dict
+from app.services.gameplay_service import apply_action, eligible_quests, progress_quests_for_visit, relationship_for
 from app.services.run_service import initial_run
-from app.stalls import STALL_BY_ID
+from app.stalls import STALL_BY_ID, vendor_context
 
 
 def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: str):
@@ -21,29 +22,37 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
 
     stall = STALL_BY_ID.get(npc_id)
     if stall:
-        character = {**stall, "place": stall["food"]}
+        character = {**vendor_context(stall), "place": stall["food"]}
         speaker_role = f"npc:{stall['id']}"
         player_role = f"player:{stall['id']}"
         speaker_name = stall["vendor"]
         game["place"] = stall["food"]
         if stall["id"] not in game["visited"]:
             game["visited"].append(stall["id"])
+        game, progress_events = progress_quests_for_visit(game, stall["id"])
+        relationship = relationship_for(game, stall["id"])
+        if relationship["familiarity"] == 0:
+            relationship["familiarity"] = 1
     else:
         character = {"vendor": "ARIA", "food": "plaza guide", "personality": "helpful local guide", "place": location}
         speaker_role = "aria"
         player_role = "player"
         speaker_name = "ARIA"
+        progress_events = []
+        relationship = {"trust": 0.0, "familiarity": 0, "milestones": []}
 
     db.add(MessageRow(id=str(uuid4()), session_id=row.id, role=player_role, content=message))
     db.flush()
-    memory_rows = get_memories(db, row.id, limit=500)
+    memory_rows = get_relevant_memories(db, row.id, message, npc_id)
     memories = [memory_dict(item) for item in reversed(memory_rows)]
+    context_roles = {player_role, speaker_role, "player:world", "world"}
     messages = db.scalars(
         select(MessageRow).where(
             MessageRow.session_id == row.id,
-        ).order_by(MessageRow.created_at.asc())
+            MessageRow.role.in_(context_roles),
+        ).order_by(MessageRow.created_at.desc()).limit(16)
     ).all()
-    history = [{"speaker": item.role, "text": item.content} for item in messages]
+    history = [{"speaker": item.role, "text": item.content} for item in reversed(messages)]
 
     result = asyncio.run(generate_interaction(
         message=message,
@@ -51,7 +60,10 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
         game_state=game,
         history=history,
         character=character,
+        relationship=relationship,
+        eligible_quests=eligible_quests(game, npc_id) if stall else [],
     ))
+    game, action_events = apply_action(game, npc_id, result.get("action")) if stall else (game, [])
 
     new_memories = []
     added_keys = set()
@@ -91,6 +103,7 @@ def dialogue(db: Session, row: SessionRow, message: str, location: str, npc_id: 
         "memories": [memory_dict(item) for item in get_memories(db, row.id, limit=500)],
         "game_state": game,
         "provider": result["provider"],
+        "events": progress_events + action_events,
     }
 
 

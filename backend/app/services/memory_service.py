@@ -38,5 +38,20 @@ def add_claim(db: Session, session_id: str, *, claim_key: str, claim_text: str, 
 def get_memories(db: Session, session_id: str, limit: int=50):
     return db.scalars(select(MemoryRow).where(MemoryRow.session_id==session_id).order_by(MemoryRow.created_at.desc()).limit(limit)).all()
 
+def get_relevant_memories(db: Session, session_id: str, query: str, vendor_id: str = "", limit: int = 12):
+    """Return a small, relevant memory set instead of the entire player history."""
+    terms = {word.casefold() for word in query.split() if len(word) > 3}
+    if vendor_id:
+        terms.add(vendor_id.replace("-", " ").casefold())
+    candidates = get_memories(db, session_id, limit=120)
+    scored = []
+    for memory in candidates:
+        haystack = f"{memory.claim_text} {memory.value} {memory.subject} {memory.predicate}".casefold()
+        score = sum(term in haystack for term in terms)
+        if score or memory.predicate.startswith("personal_context_"):
+            scored.append((score, memory))
+    scored.sort(key=lambda item: (item[0], item[1].created_at), reverse=True)
+    return [memory for _, memory in scored[:limit]]
+
 def get_conflicts(db: Session, session_id: str):
     return db.scalars(select(ConflictRow).where(ConflictRow.session_id==session_id).order_by(ConflictRow.created_at.desc())).all()

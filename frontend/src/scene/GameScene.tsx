@@ -1,19 +1,22 @@
-import { useRef, type MutableRefObject } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Html, KeyboardControls, OrbitControls, Stars, useKeyboardControls } from '@react-three/drei';
+import { useRef, useState, type MutableRefObject } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Html, KeyboardControls, Stars, useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 export type Stall = { id:string; food:string; vendor:string; description:string; color:string; personality:string };
-const STALL_X_START=-13,STALL_X_SPACING=5.2,STALL_Z_START=-9,STALL_Z_SPACING=9;
+const STALL_ROW_X=7.2,STALL_Z_START=-22.4,STALL_Z_SPACING=5.6;
 const WALK_STEP=0.35,WALK_RADIUS=0.38;
-const WALK_MIN_X=-16.45,WALK_MIN_Z=-14,WALK_WIDTH=94,WALK_HEIGHT=81;
-const stallPosition=(index:number):[number,number,number]=>[STALL_X_START+(index%6)*STALL_X_SPACING,0,STALL_Z_START+Math.floor(index/6)*STALL_Z_SPACING];
+const WALK_MIN_X=-17,WALK_MIN_Z=-58,WALK_WIDTH=98,WALK_HEIGHT=332;
+const stallPosition=(index:number):[number,number,number]=>[index<9?-STALL_ROW_X:STALL_ROW_X,0,STALL_Z_START+(index%9)*STALL_Z_SPACING];
+const stallRotation=(index:number):[number,number,number]=>[0,index<9?Math.PI/2:-Math.PI/2,0];
+const SEATS:[string,number,number,number][]=[['seat-left-1',-4.45,-14,Math.PI/2],['seat-left-2',-4.45,-5,Math.PI/2],['seat-left-3',-4.45,5,Math.PI/2],['seat-left-4',-4.45,14,Math.PI/2],['seat-right-1',4.45,-10,-Math.PI/2],['seat-right-2',4.45,0,-Math.PI/2],['seat-right-3',4.45,10,-Math.PI/2],['table-left-chair',-10.75,-13.3,0],['table-right-chair',10.75,13.5,Math.PI],['table-left-front',-12.2,-11.95,Math.PI/2],['table-right-front',12.7,12.15,-Math.PI/2]];
 function walkable(x:number,z:number,stalls:Stall[]) {
   if(x<WALK_MIN_X+WALK_RADIUS||x>WALK_MIN_X+(WALK_WIDTH-1)*WALK_STEP-WALK_RADIUS||z<WALK_MIN_Z+WALK_RADIUS||z>WALK_MIN_Z+(WALK_HEIGHT-1)*WALK_STEP-WALK_RADIUS)return false;
   for(let i=0;i<stalls.length;i++){
     const [sx,,sz]=stallPosition(i);
-    if(Math.abs(x-sx)<1.95+WALK_RADIUS&&Math.abs(z-sz)<1.43+WALK_RADIUS)return false;
+    if(Math.abs(x-sx)<1.58+WALK_RADIUS&&Math.abs(z-sz)<2.18+WALK_RADIUS)return false;
   }
+  if(Math.abs(z)>28){for(const sx of [-STALL_ROW_X,STALL_ROW_X])for(const offset of [-18,0,18]){const generatedZ=Math.round((z-offset)/36)*36+offset;if(Math.abs(x-sx)<1.58+WALK_RADIUS&&Math.abs(z-generatedZ)<2.18+WALK_RADIUS)return false}}
   return true;
 }
 type QueueNode={id:number;score:number};
@@ -42,11 +45,11 @@ function findWalkPath(start:THREE.Vector3,target:THREE.Vector3,stalls:Stall[]) {
   const last=smooth[smooth.length-1];last.set(target.x,0,target.z);return smooth;
 }
 
-function StallBooth({ stall, position, onTalk, selected }: { stall:Stall; position:[number,number,number]; onTalk:(id:string)=>void; selected:boolean }) {
+function StallBooth({ stall, position, rotation, onTalk, selected }: { stall:Stall; position:[number,number,number]; rotation:[number,number,number]; onTalk:(id:string)=>void; selected:boolean }) {
   const booth = useRef<THREE.Group>(null);
   const foodId=stall.id.toLowerCase();
   const foodColors:Record<string,string>={'pani-puri':'#d69a42','chaat':'#a94c36','masala-dosa':'#d29a42','idli-sambar':'#ede2cb','vada-pav':'#bc7439','pav-bhaji':'#c85635','jalebi':'#ec9d35','chai':'#87523b','momos':'#e8d8be','kathi-roll':'#c89454','kulfi':'#d7bf9d','biryani':'#bd9952','lassi':'#e4d099','dhokla':'#d7c562','poha':'#d6b55f','uttapam':'#c99e5c','paratha':'#cd9958','filter-coffee':'#815139'};
-  return <group ref={booth} position={position} onClick={(event)=>{event.stopPropagation();onTalk(stall.id)}} onPointerOver={()=>{document.body.style.cursor='pointer'}} onPointerOut={()=>{document.body.style.cursor='auto'}}>
+  return <group ref={booth} position={position} rotation={rotation} scale={1.12} onClick={(event)=>{event.stopPropagation();onTalk(stall.id)}} onPointerOver={()=>{document.body.style.cursor='pointer'}} onPointerOut={()=>{document.body.style.cursor='auto'}}>
     {selected&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,0.025,1.65]}><ringGeometry args={[1.15,1.42,32]}/><meshBasicMaterial color="#ffe0a2" transparent opacity={0.72}/></mesh>}
     <mesh position={[0,0.12,0]} receiveShadow><boxGeometry args={[3.85,0.24,2.75]}/><meshStandardMaterial color="#786047" roughness={0.9}/></mesh>
     <mesh position={[0,1.15,-1.23]} castShadow><boxGeometry args={[3.6,2.05,0.14]}/><meshStandardMaterial color="#654831" roughness={0.86}/></mesh>
@@ -86,7 +89,7 @@ function StallBooth({ stall, position, onTalk, selected }: { stall:Stall; positi
   </group>;
 }
 
-function Walker({ target, targetId, onArrive, playerRef, stalls }: {target:THREE.Vector3|null;targetId:string;onArrive:(id:string)=>void;playerRef:MutableRefObject<THREE.Group|null>;stalls:Stall[]}) {
+function Walker({ target, targetId, onArrive, onManual, playerRef, stalls, sitting }: {target:THREE.Vector3|null;targetId:string;onArrive:(id:string)=>void;onManual:()=>void;playerRef:MutableRefObject<THREE.Group|null>;stalls:Stall[];sitting:boolean}) {
   const arrivedTarget=useRef('');const plannedTarget=useRef<string|null>(null);const path=useRef<THREE.Vector3[]>([]);const pathIndex=useRef(0);
   const velocity=useRef(new THREE.Vector3());const manualActive=useRef(false);const leftArm=useRef<THREE.Group>(null);const rightArm=useRef<THREE.Group>(null);const leftForearm=useRef<THREE.Group>(null);const rightForearm=useRef<THREE.Group>(null);const leftLeg=useRef<THREE.Group>(null);const rightLeg=useRef<THREE.Group>(null);const leftShin=useRef<THREE.Group>(null);const rightShin=useRef<THREE.Group>(null);const torso=useRef<THREE.Group>(null);
   const [,get]=useKeyboardControls();
@@ -94,7 +97,7 @@ function Walker({ target, targetId, onArrive, playerRef, stalls }: {target:THREE
     const ref=playerRef.current;if(!ref)return;const dt=Math.min(delta,0.05);const controls=get() as Record<string,boolean>;
     const manual=controls.forward||controls.backward||controls.left||controls.right;
     if(targetId!==plannedTarget.current){plannedTarget.current=targetId;arrivedTarget.current='';path.current=target?findWalkPath(ref.position,target,stalls):[];pathIndex.current=path.current.length>1?1:0}
-    if(manual&&!manualActive.current)manualActive.current=true;
+    if(manual&&!manualActive.current){manualActive.current=true;onManual()}
     if(!manual&&manualActive.current){manualActive.current=false;if(target){path.current=findWalkPath(ref.position,target,stalls);pathIndex.current=path.current.length>1?1:0}}
     const desired=new THREE.Vector3();
     if(manual){desired.set((controls.right?1:0)-(controls.left?1:0),0,(controls.backward?1:0)-(controls.forward?1:0));if(desired.lengthSq())desired.normalize().multiplyScalar(3.0)}
@@ -122,12 +125,12 @@ function Walker({ target, targetId, onArrive, playerRef, stalls }: {target:THREE
     if(rightArm.current)rightArm.current.rotation.x=THREE.MathUtils.damp(rightArm.current.rotation.x,stride*.76,11,dt);
     if(leftForearm.current)leftForearm.current.rotation.x=THREE.MathUtils.damp(leftForearm.current.rotation.x,-.24+Math.max(0,-counter)*.34,11,dt);
     if(rightForearm.current)rightForearm.current.rotation.x=THREE.MathUtils.damp(rightForearm.current.rotation.x,-.24+Math.max(0,-stride)*.34,11,dt);
-    if(leftLeg.current)leftLeg.current.rotation.x=THREE.MathUtils.damp(leftLeg.current.rotation.x,stride,11,dt);
-    if(rightLeg.current)rightLeg.current.rotation.x=THREE.MathUtils.damp(rightLeg.current.rotation.x,counter,11,dt);
-    if(leftShin.current)leftShin.current.rotation.x=THREE.MathUtils.damp(leftShin.current.rotation.x,Math.max(0,-stride)*.78,11,dt);
-    if(rightShin.current)rightShin.current.rotation.x=THREE.MathUtils.damp(rightShin.current.rotation.x,Math.max(0,-counter)*.78,11,dt);
+    if(leftLeg.current)leftLeg.current.rotation.x=THREE.MathUtils.damp(leftLeg.current.rotation.x,sitting?-.95:stride,11,dt);
+    if(rightLeg.current)rightLeg.current.rotation.x=THREE.MathUtils.damp(rightLeg.current.rotation.x,sitting?-.95:counter,11,dt);
+    if(leftShin.current)leftShin.current.rotation.x=THREE.MathUtils.damp(leftShin.current.rotation.x,sitting?1.25:Math.max(0,-stride)*.78,11,dt);
+    if(rightShin.current)rightShin.current.rotation.x=THREE.MathUtils.damp(rightShin.current.rotation.x,sitting?1.25:Math.max(0,-counter)*.78,11,dt);
   });
-  return <group ref={playerRef} position={[0,0,12.8]}>
+  return <group ref={playerRef} position={[0,0,12.8]} scale={.78}>
     <group ref={torso} position={[0,.95,0]}>
       <mesh position={[0,.45,0]} castShadow><capsuleGeometry args={[.31,.58,8,14]}/><meshStandardMaterial color="#2d5d88" roughness={.68}/></mesh>
       <mesh position={[0,.53,.275]} castShadow><boxGeometry args={[.43,.4,.035]}/><meshStandardMaterial color="#dce4e7" roughness={.9}/></mesh>
@@ -146,30 +149,47 @@ function Walker({ target, targetId, onArrive, playerRef, stalls }: {target:THREE
 
 function StreetLamp({position}:{position:[number,number,number]}){return <group position={position}><mesh position={[0,2.4,0]} castShadow><cylinderGeometry args={[.055,.075,4.8,10]}/><meshStandardMaterial color="#31353a" metalness={.5} roughness={.5}/></mesh><mesh position={[.32,4.65,0]} rotation={[0,0,-Math.PI/2.8]}><cylinderGeometry args={[.04,.04,.68,8]}/><meshStandardMaterial color="#31353a"/></mesh><mesh position={[.63,4.4,0]}><sphereGeometry args={[.15,14,12]}/><meshStandardMaterial color="#ffe0a0" emissive="#ffaf52" emissiveIntensity={2.5}/></mesh><pointLight position={[.63,4.25,0]} color="#ffb55c" intensity={5} distance={7}/></group>}
 function ParkedScooter({position,rotation=0}:{position:[number,number,number];rotation?:number}){return <group position={position} rotation={[0,rotation,0]}><mesh position={[0,.43,0]} castShadow><boxGeometry args={[.42,.24,1.18]}/><meshStandardMaterial color="#b63f35" metalness={.22} roughness={.48}/></mesh><mesh position={[0,.68,-.18]} rotation={[0,0,.16]} castShadow><boxGeometry args={[.09,.7,.09]}/><meshStandardMaterial color="#24282c"/></mesh><mesh position={[0,.7,.22]} castShadow><boxGeometry args={[.34,.12,.42]}/><meshStandardMaterial color="#302b29" roughness={.75}/></mesh>{[-.43,.43].map(z=><mesh key={z} position={[0,.23,z]} rotation={[0,Math.PI/2,0]} castShadow><cylinderGeometry args={[.21,.21,.09,16]}/><meshStandardMaterial color="#16191b" roughness={.85}/></mesh>)}</group>}
+function Seat({position,rotation,selected,onSelect}:{position:[number,number,number];rotation:number;selected:boolean;onSelect:()=>void}){return <group position={position} rotation={[0,rotation,0]} onClick={event=>{event.stopPropagation();onSelect()}} onPointerOver={()=>{document.body.style.cursor='pointer'}} onPointerOut={()=>{document.body.style.cursor='auto'}}>
+  {selected&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,.025,0]}><ringGeometry args={[.42,.62,24]}/><meshBasicMaterial color="#9fe0c5" transparent opacity={.7}/></mesh>}
+  <mesh position={[0,.46,0]} castShadow><boxGeometry args={[.72,.12,1.48]}/><meshStandardMaterial color="#6e4630" roughness={.86}/></mesh>
+  {[-.55,.55].map(z=><mesh key={z} position={[0,.22,z]} castShadow><boxGeometry args={[.62,.42,.1]}/><meshStandardMaterial color="#463329" roughness={.9}/></mesh>)}
+  <Html position={[0,.82,0]} center distanceFactor={10}><div className="seat-label">SIT</div></Html>
+</group>}
 function StreetDetails(){return <group>
-  {[-14,-4,5,14].map(x=><group key={`road-mark-${x}`} position={[x,-.045,2.8]}><mesh rotation={[-Math.PI/2,0,0]}><planeGeometry args={[2.6,.16]}/><meshBasicMaterial color="#e5c477" transparent opacity={.7}/></mesh></group>)}
-  {[-15.5,15.5].map(x=><group key={`curb-${x}`} position={[x,.02,0]}>{Array.from({length:12},(_,i)=><mesh key={i} position={[0,0,-13.7+i*2.5]} castShadow><boxGeometry args={[.55,.18,2.25]}/><meshStandardMaterial color={i%2?'#e6d3ab':'#5f6060'} roughness={.95}/></mesh>)}</group>)}
-  {[-15,-5,5,15].map((x,i)=><StreetLamp key={x} position={[x,0,13.8-i%2*1.2]}/>) }
+  {[-18,-12,-6,0,6,12,18].map(z=><group key={`road-mark-${z}`} position={[0,-.045,z]}><mesh rotation={[-Math.PI/2,0,0]}><planeGeometry args={[.16,2.8]}/><meshBasicMaterial color="#e5c477" transparent opacity={.7}/></mesh></group>)}
+  {[-2.85,2.85].map(x=><group key={`curb-${x}`} position={[x,.02,0]}>{Array.from({length:21},(_,i)=><mesh key={i} position={[0,0,-22+i*2.2]} castShadow><boxGeometry args={[.34,.18,1.96]}/><meshStandardMaterial color={i%2?'#e6d3ab':'#5f6060'} roughness={.95}/></mesh>)}</group>)}
+  {[[-3.25,-15],[-3.25,4],[-3.25,16],[3.25,-8],[3.25,10]].map(([x,z],i)=><StreetLamp key={i} position={[x,0,z]}/>) }
   <ParkedScooter position={[-11.2,0,12.2]} rotation={-.7}/><ParkedScooter position={[11.9,0,11.1]} rotation={.65}/>
-  {[[-12.2,-13.3],[12.7,-13.3],[-12.4,13.5],[12.8,13.5]].map(([x,z],i)=><group key={`table-${i}`} position={[x,0,z]}><mesh position={[0,.67,0]} castShadow><cylinderGeometry args={[.62,.62,.08,20]}/><meshStandardMaterial color="#5d4131" roughness={.85}/></mesh><mesh position={[0,.32,0]} castShadow><cylinderGeometry args={[.055,.055,.66,10]}/><meshStandardMaterial color="#3d3029"/></mesh>{[-.55,.55].map(dx=><mesh key={dx} position={[dx,.36,0]} castShadow><boxGeometry args={[.34,.45,.34]}/><meshStandardMaterial color="#a94d35" roughness={.86}/></mesh>)}</group>)}
+  {[[-12.2,-13.3],[12.7,-13.3],[-12.4,13.5],[12.8,13.5]].map(([x,z],i)=><group key={`table-${i}`} position={[x,0,z]}><mesh position={[0,.67,0]} castShadow><cylinderGeometry args={[.62,.62,.08,20]}/><meshStandardMaterial color="#5d4131" roughness={.85}/></mesh><mesh position={[0,.32,0]} castShadow><cylinderGeometry args={[.055,.055,.66,10]}/><meshStandardMaterial color="#3d3029"/></mesh>{[-.55,.55].map(dx=><mesh key={dx} position={[dx,.36,0]} castShadow><boxGeometry args={[.34,.45,.34]}/><meshStandardMaterial color="#a94d35" roughness={.86}/></mesh>)}<Html position={[0,.86,0]} center distanceFactor={11}><div className="table-label">COMMUNITY TABLE</div></Html></group>)}
   {[-1,1].map(side=><group key={`buildings-${side}`} position={[side*20,0,0]}>{[-10,0,10].map((z,i)=><group key={z} position={[0,0,z]}><mesh position={[0,3.2,0]} castShadow receiveShadow><boxGeometry args={[4.2,6.4,8.7]}/><meshStandardMaterial color={i%2?'#544d51':'#595046'} roughness={.96}/></mesh><mesh position={[-side*2.11,3.4,0]}><boxGeometry args={[.06,.72,1.05]}/><meshStandardMaterial color="#ffd071" emissive="#c57732" emissiveIntensity={.55}/></mesh></group>)}</group>)}
 </group>}
 
+function ExpandingMarket({playerRef,stalls,onTalk}:{playerRef:MutableRefObject<THREE.Group|null>;stalls:Stall[];onTalk:(id:string)=>void}){
+  const [chunk,setChunk]=useState(0);
+  useFrame(()=>{const next=Math.round((playerRef.current?.position.z||0)/36);if(next!==chunk)setChunk(next)});
+  const chunks=[];for(let i=chunk-2;i<=chunk+2;i++)if(i!==0)chunks.push(i);
+  return <group>{chunks.map(chunkId=><group key={`market-chunk-${chunkId}`}>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-.105,chunkId*36]} receiveShadow><planeGeometry args={[42,35]}/><meshStandardMaterial color="#b59672" roughness={.94}/></mesh>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-.075,chunkId*36]} receiveShadow><planeGeometry args={[5.1,35]}/><meshStandardMaterial color="#45494b" roughness={.9}/></mesh>
+    {[-18,0,18].map((offset,index)=><group key={`${chunkId}-${offset}`}>{[-1,1].map(side=>{const stall=stalls[(Math.abs(chunkId*3+index)+(side>0?7:0))%Math.max(stalls.length,1)];if(!stall)return null;return <StallBooth key={`${chunkId}-${side}-${offset}`} stall={stall} position={[side*STALL_ROW_X,0,chunkId*36+offset]} rotation={[0,side<0?Math.PI/2:-Math.PI/2,0]} onTalk={onTalk} selected={false}/>})}</group>)}
+  </group>)}</group>
+}
+
 function Plaza({ stalls, onTalk, activeId, onArrive }: { stalls:Stall[]; onTalk:(id:string)=>void; activeId:string; onArrive:(id:string)=>void }) {
   const playerRef=useRef<THREE.Group>(null);
-  const controlsRef=useRef<any>(null);
-  const lastPlayerPosition=useRef(new THREE.Vector3(0,0,12.8));
+  const camera=useThree(state=>state.camera);
+  const [sitting,setSitting]=useState(false);
   const activeIndex=stalls.findIndex(stall=>stall.id===activeId);
-  const target=activeIndex<0?null:new THREE.Vector3(STALL_X_START+(activeIndex%6)*STALL_X_SPACING,0,STALL_Z_START+Math.floor(activeIndex/6)*STALL_Z_SPACING+2.4);
-  useFrame(()=>{
-    if(!playerRef.current||!controlsRef.current)return;
-    const delta=playerRef.current.position.clone().sub(lastPlayerPosition.current);
-    if(delta.lengthSq()>0.000001){
-      controlsRef.current.target.add(delta);
-      controlsRef.current.object.position.add(delta);
-      controlsRef.current.update();
-      lastPlayerPosition.current.copy(playerRef.current.position);
-    }
+  const seatIndex=activeId.startsWith('seat:')?SEATS.findIndex(([id])=>`seat:${id}`===activeId):-1;
+  const target=activeIndex>=0?new THREE.Vector3(activeIndex<9?-4.65:4.65,0,STALL_Z_START+(activeIndex%9)*STALL_Z_SPACING):seatIndex>=0?new THREE.Vector3(SEATS[seatIndex][1],0,SEATS[seatIndex][2]):null;
+  useFrame((_,delta)=>{
+    if(!playerRef.current)return;
+    const player=playerRef.current;
+    const facingX=Math.sin(player.rotation.y),facingZ=Math.cos(player.rotation.y);
+    const followPosition=new THREE.Vector3(player.position.x-facingX*8.5,player.position.y+5.1,player.position.z-facingZ*8.5);
+    camera.position.lerp(followPosition,1-Math.exp(-7*delta));
+    const lookAt=new THREE.Vector3(player.position.x,player.position.y+1.05,player.position.z);
+    camera.lookAt(lookAt);
   });
   return <>
     <color attach="background" args={['#182232']}/><fog attach="fog" args={['#182232',20,55]}/>
@@ -177,16 +197,17 @@ function Plaza({ stalls, onTalk, activeId, onArrive }: { stalls:Stall[]; onTalk:
     <directionalLight position={[8,14,6]} intensity={2.5} castShadow shadow-mapSize={[2048,2048]} shadow-bias={-.0002}/>
     <pointLight position={[0,8,0]} color="#ffb35c" intensity={38} distance={28}/>
     <Stars radius={80} depth={35} count={350} factor={2} fade speed={0.15}/>
-    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.12,0]} receiveShadow><planeGeometry args={[40,34]}/><meshStandardMaterial color="#55483c" roughness={.98}/></mesh>
-    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.09,0]} receiveShadow><planeGeometry args={[34,30]}/><meshStandardMaterial color="#b59672" roughness={.94}/></mesh>
-    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.06,0]} receiveShadow><planeGeometry args={[5.1,30]}/><meshStandardMaterial color="#45494b" roughness={.9}/></mesh>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.12,0]} receiveShadow><planeGeometry args={[42,120]}/><meshStandardMaterial color="#55483c" roughness={.98}/></mesh>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.09,0]} receiveShadow><planeGeometry args={[35,118]}/><meshStandardMaterial color="#b59672" roughness={.94}/></mesh>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.06,0]} receiveShadow><planeGeometry args={[5.1,118]}/><meshStandardMaterial color="#45494b" roughness={.9}/></mesh>
     <StreetDetails/>
+    <ExpandingMarket playerRef={playerRef} stalls={stalls} onTalk={onTalk}/>
     {[-19,19].map(x=><group key={x} position={[x,0,-1]}><mesh position={[0,3,0]} castShadow><boxGeometry args={[4,6,32]}/><meshStandardMaterial color={x<0?'#62514a':'#66525a'}/></mesh><mesh position={[0,6.1,0]}><boxGeometry args={[4.15,0.22,32.1]}/><meshStandardMaterial color="#92704c"/></mesh>{[-12,-6,0,6,12].map(z=><mesh key={z} position={[-2.02,3,z]}><boxGeometry args={[0.05,0.65,0.8]}/><meshStandardMaterial color="#ffc56f" emissive="#ff9a3b" emissiveIntensity={0.5}/></mesh>)}</group>)}
+    {SEATS.map(([id,x,z,rotation])=><Seat key={id} position={[x,0,z]} rotation={rotation} selected={activeId===`seat:${id}`} onSelect={()=>{setSitting(false);onTalk(`seat:${id}`)}}/>)}
     {stalls.map((stall,index)=>{
-      return <StallBooth key={stall.id} stall={stall} position={stallPosition(index)} onTalk={onTalk} selected={stall.id===activeId}/>;
+      return <StallBooth key={stall.id} stall={stall} position={stallPosition(index)} rotation={stallRotation(index)} onTalk={onTalk} selected={stall.id===activeId}/>;
     })}
-    <Walker target={target} targetId={activeId} onArrive={onArrive} playerRef={playerRef} stalls={stalls}/>
-    <OrbitControls ref={controlsRef} target={[0,1,0]} minDistance={11} maxDistance={25} maxPolarAngle={Math.PI/2.08} enablePan/>
+    <Walker target={target} targetId={activeId} onArrive={id=>{if(id.startsWith('seat:'))setSitting(true);else onArrive(id)}} onManual={()=>setSitting(false)} playerRef={playerRef} stalls={stalls} sitting={sitting}/>
   </>;
 }
 
@@ -194,7 +215,7 @@ export default function GameScene({stalls,onTalk,activeId,onArrive}:{stalls:Stal
   return <div className="scene-wrap city-plaza"><KeyboardControls map={[
     {name:'forward',keys:['ArrowUp','KeyW']},{name:'backward',keys:['ArrowDown','KeyS']},
     {name:'left',keys:['ArrowLeft','KeyA']},{name:'right',keys:['ArrowRight','KeyD']},
-  ]}><Canvas shadows dpr={[1,1.75]} gl={{antialias:true}} camera={{position:[0,13,22],fov:42}}><Plaza stalls={stalls} onTalk={onTalk} activeId={activeId} onArrive={onArrive}/></Canvas></KeyboardControls>
+  ]}><Canvas shadows dpr={[1,1.75]} gl={{antialias:true}} camera={{position:[0,5.1,21.3],fov:58}}><Plaza stalls={stalls} onTalk={onTalk} activeId={activeId} onArrive={onArrive}/></Canvas></KeyboardControls>
     <div className="scene-hint">WASD / ARROWS TO WANDER · CLICK OR TELL ME WHERE TO GO</div>
   </div>;
 }

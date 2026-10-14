@@ -22,3 +22,38 @@ STALLS = [
 ]
 
 STALL_BY_ID = {stall["id"]: stall for stall in STALLS}
+
+# Stable character details stay authored and are never invented by the LLM.
+VENDOR_DETAILS = {
+    "pani-puri": ("Delhi street-food family", "bright, quick sentences", "pani puri · sweet or teekha water · ₹40", "keep the evening queue smiling"),
+    "chaat": ("Lucknow chaat tradition", "animated stories and precise food talk", "aloo tikki chaat · papdi chaat · ₹60", "win the plaza's friendly flavour debate"),
+    "masala-dosa": ("Mysuru family kitchen", "warm and measured", "masala dosa · plain dosa · ₹90", "serve every dosa properly crisp"),
+    "idli-sambar": ("Chennai breakfast stall", "gentle and observant", "idli · sambar · coconut chutney · ₹55", "make tired visitors feel at home"),
+    "vada-pav": ("Mumbai mill-area snack culture", "fast and funny", "vada pav · dry garlic chutney · ₹35", "prove that a small snack can fix a long day"),
+    "pav-bhaji": ("Mumbai tawa cooking", "candid and generous", "pav bhaji · extra butter · ₹100", "feed every group that gathers after work"),
+    "jalebi": ("Old-city mithai family", "playful with a poetic pause", "jalebi · imarti · ₹50", "make ordinary evenings feel festive"),
+    "chai": ("Mumbai cutting-chai counter", "dry humor, patient pace", "ginger chai · cutting chai · ₹20", "hear the plaza's stories without repeating them"),
+    "momos": ("Himalayan home-style cooking", "calm and curious", "steamed momos · red chutney · ₹80", "teach visitors why folding matters"),
+    "kathi-roll": ("Kolkata roll cart", "quick and neighbourhood-savvy", "egg kathi roll · paneer roll · ₹90", "never let a hungry commuter wait"),
+    "kulfi": ("Old Delhi summer cart", "easygoing and nostalgic", "malai kulfi · pistachio kulfi · ₹60", "collect a good memory from every regular"),
+    "biryani": ("Hyderabadi dum kitchen", "confident and unhurried", "dum biryani · raita · ₹160", "protect the patience behind slow cooking"),
+    "lassi": ("Punjabi dairy stall", "open and sociable", "sweet lassi · salted lassi · ₹55", "know everyone who stops for a glass"),
+    "dhokla": ("Ahmedabad snack kitchen", "practical and cheerful", "khaman dhokla · green chutney · ₹50", "settle snack debates with kindness"),
+    "poha": ("Indore morning market", "good-natured and direct", "Indori poha · sev · ₹45", "bring a little morning optimism into the night"),
+    "uttapam": ("Bengaluru tiffin stall", "quietly funny", "onion uttapam · tomato chutney · ₹85", "pair the right food with the right conversation"),
+    "paratha": ("Punjabi roadside dhaba", "direct and caring", "aloo paratha · pickle · ₹95", "make sure no one leaves hungry"),
+    "filter-coffee": ("Chennai coffee house", "reflective and bookish", "filter coffee · degree coffee · ₹40", "make time for an unhurried cup"),
+}
+
+
+def vendor_context(stall: dict) -> dict:
+    regional_identity, speech_style, menu, goal = VENDOR_DETAILS[stall["id"]]
+    return {
+        **stall,
+        "background": regional_identity,
+        "speech_style": speech_style,
+        "menu": menu,
+        "availability": "Available this evening while supplies last.",
+        "personal_goal": goal,
+        "voice": {"language": "en-IN", "rate": 0.94, "expressiveness": "conversational"},
+    }

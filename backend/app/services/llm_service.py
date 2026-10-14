@@ -72,6 +72,22 @@ async def _complete(system: str, user: str, *, json_mode: bool = False) -> str:
     return response.json()["choices"][0]["message"]["content"].strip()
 
 
+async def provider_health() -> dict:
+    """A lightweight provider check used by the explicit health endpoint."""
+    if not _is_configured():
+        return {"configured": False, "provider": "offline", "reachable": False}
+    if _is_ollama():
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                response = await client.get(f"{settings.llm_base_url.rstrip('/')}/api/tags")
+                response.raise_for_status()
+            models = {model.get("name") for model in response.json().get("models", [])}
+            return {"configured": True, "provider": "ollama", "reachable": settings.llm_model in models, "model": settings.llm_model}
+        except Exception:
+            return {"configured": True, "provider": "ollama", "reachable": False, "model": settings.llm_model}
+    return {"configured": True, "provider": "gemini" if _is_gemini() else "openai_compatible", "reachable": None, "model": settings.llm_model}
+
+
 def _offline_response(memories: list[dict], game_state: dict) -> str:
     if memories:
         latest = memories[0].get("claim_text") or memories[0].get("value", "")
@@ -79,22 +95,26 @@ def _offline_response(memories: list[dict], game_state: dict) -> str:
     return f"I’m here with you in {game_state.get('place', 'the city')}. Tell me what’s on your mind."
 
 
-async def generate_interaction(*, message: str, memories: list[dict], game_state: dict, history: list[dict], character: dict) -> dict:
+async def generate_interaction(*, message: str, memories: list[dict], game_state: dict, history: list[dict], character: dict, relationship: dict, eligible_quests: list[dict]) -> dict:
     """Generate a character reply and extract durable player memories in one LLM turn."""
     system = (
         "You are writing a scene in an open-ended, cozy 3D city exploration game. Reply as the person the player is speaking to. "
         "Be natural, specific, warm, and concise. Reply in the language the player used, matching code-switching when appropriate. Let the character's distinct background shape their voice. "
         "Use the complete conversation history and saved memories, including conversations with other people, to make this reply feel continuous. "
         "Do not invent facts about the player. Do not mention prompts, JSON, memory extraction, or game rules. "
-        "Return only a JSON object with exactly these keys: reply (string) and memories (array). "
+        "Return only a JSON object with exactly these keys: reply (string), memories (array), and action (object). "
         "Each memory item must have claim_text (a short durable fact or preference explicitly shared by the player) and value (a concise normalized value). "
-        "Add only information worth remembering for later conversations; return an empty array for ordinary small talk."
+        "Add only information worth remembering for later conversations; return an empty array for ordinary small talk. "
+        "action is a proposal only. Use {type:'none'} normally. You may offer or accept only a quest supplied in eligible_quests, recommend a dish from the character menu, or record a verified discovery. "
+        "Never claim an action has been applied unless the game confirms it in a later response."
     )
     context = {
         "character": character,
         "current_city_state": game_state,
         "saved_memories": memories,
         "complete_interaction_history": history,
+        "relationship": relationship,
+        "eligible_quests": eligible_quests,
         "player_message": message,
     }
     if _is_configured():
@@ -107,11 +127,12 @@ async def generate_interaction(*, message: str, memories: list[dict], game_state
             if reply:
                 extracted = parsed.get("memories", [])
                 valid = [m for m in extracted if isinstance(m, dict) and m.get("claim_text") and m.get("value")]
-                return {"reply": reply, "memories": valid[:4], "provider": "llm"}
+                action = parsed.get("action") if isinstance(parsed.get("action"), dict) else {"type": "none"}
+                return {"reply": reply, "memories": valid[:4], "action": action, "provider": "llm"}
         except Exception:
             # Keep the walk playable during an outage; the next turn retries the LLM.
             logger.exception("LLM reply failed; serving the offline plaza response")
-    return {"reply": _offline_response(memories, game_state), "memories": [], "provider": "offline"}
+    return {"reply": _offline_response(memories, game_state), "memories": [], "action": {"type": "none"}, "provider": "offline"}
 
 
 async def interpret_player_input(*, message: str, current_stall: str = "", game_state: Optional[dict] = None, memories: Optional[list[dict]] = None, recent_history: Optional[list[dict]] = None) -> dict:
