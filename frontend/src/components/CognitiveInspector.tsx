@@ -1,0 +1,9 @@
+import { Brain, ShieldCheck, AlertTriangle, History, Radio } from 'lucide-react';
+import type { Conflict, Memory } from '../types';
+export default function CognitiveInspector({memories,conflicts,loading}:{memories:Memory[];conflicts:Conflict[];loading:boolean}) {
+ return <section className="panel inspector"><div className="panel-heading"><div><span className="eyebrow">TRANSPARENCY LAYER</span><h2><Brain size={18}/> Cognitive inspector</h2></div><span className="count-pill">{memories.length} MEMORIES</span></div>
+ <div className="inspector-summary"><div><span className="summary-icon"><History size={16}/></span><span><b>{memories.length}</b><small>Recorded claims</small></span></div><div><span className="summary-icon warn"><AlertTriangle size={16}/></span><span><b>{conflicts.filter(c=>c.status==='unresolved').length}</b><small>Open conflicts</small></span></div></div>
+ <div className="memory-list">{loading&&<p className="empty-state">Syncing memory store…</p>}{!loading&&memories.length===0&&<p className="empty-state">No memories yet. Tell ARIA what you know about the station.</p>}{memories.map(m=><article className="memory-card" key={m.id}><div className="memory-top"><span className={`status-pill ${m.status}`}>{m.status.replace('_',' ')}</span><span className="confidence">{Math.round(m.confidence*100)}% heuristic</span></div><h3>{m.claim_text}</h3><div className="memory-meta"><span><Radio size={12}/> {m.source_type.replace('_',' ')}</span><span><ShieldCheck size={12}/> {m.subject}</span></div>{m.source_id&&<div className="source-id">SOURCE ID · {m.source_id}</div>}</article>)}</div>
+ {conflicts.filter(c=>c.status==='unresolved').map(c=><div className="conflict-banner" key={c.id}><AlertTriangle size={16}/><span><b>Belief conflict detected</b><small>Conflicting evidence is preserved for review.</small></span></div>)}
+ </section>
+}
